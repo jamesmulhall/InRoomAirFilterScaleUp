@@ -3,7 +3,7 @@ USE BELOW FOR CREATING COUNTRY CLASSES
 def generate_countries_from_multiple_csvs(
     country_csv_path,
     cr_box_csv_path=None,
-    ecw_csv_path=None,
+    essential_workers_csv_path=None,
     baghouse_csv_path=None
 ):
     # ---------------- Main country CSV ----------------
@@ -21,14 +21,14 @@ def generate_countries_from_multiple_csvs(
             raise ValueError("CR Box CSV must have a 'Country' column")
         cr_box_df["Country"] = cr_box_df["Country"].apply(Country._cc.convert, to="name_short")
     
-    # ---------------- ECW CSV ----------------
-    ecw_df = None
-    if ecw_csv_path:
-        ecw_df = pd.read_csv(ecw_csv_path, encoding='cp1252')
-        required_ecw_cols = ['Country Name', 'Country Code']
-        for col in required_ecw_cols:
-            if col not in ecw_df.columns:
-                raise ValueError(f"ECW CSV must have a column named '{col}'")
+    # ---------------- Essential / Indoor worker CSV ----------------
+    essential_workers_df = None
+    if essential_workers_csv_path:
+        essential_workers_df = pd.read_csv(essential_workers_csv_path, encoding='cp1252')
+        required_essential_cols = ['Country Name', 'Country Code']
+        for col in required_essential_cols:
+            if col not in essential_workers_df.columns:
+                raise ValueError(f"Essential Workers CSV must have a column named '{col}'")
     
     # ---------------- Baghouse Airflow CSV ----------------
     baghouse_df = None
@@ -64,13 +64,13 @@ def generate_countries_from_multiple_csvs(
                     if col != "Country":
                         c.properties[col] = 0
         
-        # ---------------- Merge ECW properties ----------------
-        if ecw_df is not None:
-            ecw_row = ecw_df[ecw_df["Country Code"] == iso_code]
-            if not ecw_row.empty:
-                for col in ecw_row.columns:
+        # ---------------- Merge Essential / Indoor worker properties ----------------
+        if essential_workers_df is not None:
+            essential_workers_row = essential_workers_df[essential_workers_df["Country Code"] == iso_code]
+            if not essential_workers_row.empty:
+                for col in essential_workers_row.columns:
                     if col not in ["Country Code", "Country Name"]:
-                        c.properties[col] = ecw_row.iloc[0][col]
+                        c.properties[col] = essential_workers_row.iloc[0][col]
         
         # ---------------- Merge Baghouse properties ----------------
         if baghouse_df is not None:

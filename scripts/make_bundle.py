@@ -7,12 +7,12 @@ from pathlib import Path
 # Fixed relative paths (exactly as requested)
 # -----------------------------
 file_path_main      = "../results/Scale_up_output_MS.pkl"
-file_path_percent   = "../results/Scale_up_PERCENT_ECW_POLL_MS.pkl"
+file_path_percent   = "../results/Scale_up_PERCENT_INDOOR_VITAL_MS.pkl"
 file_path_cr_man    = "../results/Scale_up_CR_MAN_MS.pkl"
 file_path_cr_repur  = "../results/Scale_up_CR_REPUR_MS.pkl"
 file_path_coalbag   = "../results/Scale_up_COALBAG_MS.pkl"
 file_path_cr_stock  = "../results/Scale_up_CR_STOCK.pkl"
-file_path_ecw_country = "../results/ECWbyCountry.csv"  # (not used in bundle, but kept for parity)
+file_path_essential_workers_country = "../results/EssentialWorkersByCountry.csv"  # (not used in bundle, but kept for parity)
 
 # --- add these 7 lines right after your file_path_* block ---
 from pathlib import Path
@@ -26,7 +26,7 @@ file_path_cr_man     = _rp(file_path_cr_man)
 file_path_cr_repur   = _rp(file_path_cr_repur)
 file_path_coalbag    = _rp(file_path_coalbag)
 file_path_cr_stock   = _rp(file_path_cr_stock)
-file_path_ecw_country= _rp(file_path_ecw_country)
+file_path_essential_workers_country= _rp(file_path_essential_workers_country)
 
 
 # -----------------------------
@@ -84,7 +84,7 @@ def pick_week_columns(df: pd.DataFrame):
             continue
     if numeric_like:
         return numeric_like
-    # Fallback: first two columns are ECW bounds, weeks from col index 2 onward
+    # Fallback: first two columns are indoor-vital bounds, weeks from col index 2 onward
     return list(df.columns[2:])
 
 def nominal_df_from_pickle(rel_path: str) -> tuple[pd.DataFrame, list]:
@@ -133,9 +133,9 @@ def build_region_to_iso():
         mapping[region] = iso_list
     return mapping
 
-def extract_ecw_per_person_from_main():
+def extract_indoor_vital_per_person_from_main():
     """
-    Use the main pickle to extract ECW per-person bounds:
+    Use the main pickle to extract indoor-vital per-person bounds:
     first two columns = [lower_pp, upper_pp] (as in your notebook).
     """
     df = load_pickle_table(file_path_main)
@@ -144,15 +144,15 @@ def extract_ecw_per_person_from_main():
         raise KeyError(f"None of UNRegion_list found in {file_path_main}. "
                        f"Index sample: {list(df.index[:10])}")
     df = df.loc[present]
-    ecw_cols = df.columns[:2]
-    ecw = {}
+    indoor_vital_cols = df.columns[:2]
+    indoor_vital = {}
     for r in present:
-        row = df.loc[r, ecw_cols]
-        ecw[r] = {
+        row = df.loc[r, indoor_vital_cols]
+        indoor_vital[r] = {
             "lower": coerce_numeric(row.iloc[0]),
             "upper": coerce_numeric(row.iloc[1]),
         }
-    return ecw
+    return indoor_vital
 
 def main():
     print("[1/6] Loading datasets…")
@@ -174,22 +174,22 @@ def main():
     print("[4/6] Converting dataframes to JSON maps…")
     datasets = {
         "ALL":                  df_to_weekmap(df_main),
-        "ECW Coverage %":       df_to_weekmap(df_percent),
+        "Indoor Vital Coverage %":       df_to_weekmap(df_percent),
         "CR Box Manufacturing": df_to_weekmap(df_cr_man),
         "CR Box Repurposing":   df_to_weekmap(df_cr_repur),
         "Coalbaghouse":         df_to_weekmap(df_coalbag),
         "CR Box Stock":         df_to_weekmap(df_cr_stock),
     }
 
-    print("[5/6] Extracting ECW per-person bounds (lower/upper) from main…")
-    ecw_per_person = extract_ecw_per_person_from_main()
+    print("[5/6] Extracting indoor-vital per-person bounds (lower/upper) from main…")
+    indoor_vital_per_person = extract_indoor_vital_per_person_from_main()
 
     bundle = {
         "weeks": weeks,
         "un_regions": UNRegion_list,
         "region_to_iso": region_to_iso,
         "datasets": datasets,
-        "ecw_per_person": ecw_per_person,  # multiply by CADRPP client-side
+        "indoor_vital_per_person": indoor_vital_per_person,  # multiply by CADRPP client-side
     }
 
     OUTFILE.write_text(json.dumps(bundle))

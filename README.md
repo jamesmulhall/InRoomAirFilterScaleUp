@@ -1,10 +1,10 @@
 # In Room Air Filter Scale Up GitHub Repository
-A scale up simulation of various in room filtration systems that could protect critical workers in the event of a catastrophic pandemic. 
+A scale up simulation of various in room filtration systems that could protect essential workers in the event of a catastrophic pandemic. 
 
 ---
 
 ## Overview
-This git repository holds the code for the In Room Air Filtration ANU Capstone group in partnership with ALLFED. It contains the data processing and analysis of our simulations of scale up in room systems as well as our critical worker estimation given an extreme pandemic scenario. For more information, visit the ANU Capstone team's repositiory and landing page. 
+This git repository holds the code for the In Room Air Filtration ANU Capstone group in partnership with ALLFED. It contains the data processing and analysis of our simulations of scale up in room systems as well as our essential worker estimation given an extreme pandemic scenario. For more information, visit the ANU Capstone team's repositiory and landing page. 
 
 Landing Page: https://sites.google.com/view/anu-capstone-air-filtration/home 
 
@@ -32,9 +32,9 @@ pip install -r requirements.txt
 ---
 
 ## Data
-The `data` folder contains all source datasets used in our scale-up estimation and analysis. This includes data for our **Critical Worker Analysis**, **CR Box Analysis**, and **Coal Baghouse Analysis**.
+The `data` folder contains all source datasets used in our scale-up estimation and analysis. This includes data for our **Essential Worker Analysis**, **CR Box Analysis**, and **Coal Baghouse Analysis**.
 
-### Critical Worker Analysis
+### Essential Worker Analysis
 - `ILO_ISCO_08_GLB.csv`  
 - `Indoors_Environmentally_Controlled_data.csv`  
 - `ISCO_SOC_Crosswalk.csv`  
