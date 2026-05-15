@@ -4,3 +4,7 @@ pytest>=7.1.2
 numpy>=1.23.1
 matplotlib>=3.5.1
 mkdocs
+country_converter
+openpyxl
+uncertainties
+plotly

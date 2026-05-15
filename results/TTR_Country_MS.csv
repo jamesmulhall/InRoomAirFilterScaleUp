@@ -1,217 +1,217 @@
-Region,ECW POLL in Weeks,ECW ILO in Weeks
-Aruba,262,262
-Afghanistan,262,262
-Angola,262,262
-Albania,262,262
-Andorra,262,262
-United Arab Emirates,116,262
-Argentina,213,262
-Armenia,262,262
-American Samoa,262,262
-Antigua and Barbuda,262,262
-Australia,146,262
-Austria,67,144
-Azerbaijan,262,262
-Burundi,262,262
-Belgium,96,211
-Benin,262,262
-Burkina Faso,262,262
-Bangladesh,262,262
-Bulgaria,262,262
-Bahrain,100,249
-Bahamas,262,262
-Bosnia and Herzegovina,262,262
-Belarus,262,262
-Belize,262,262
-Bermuda,262,262
-Bolivia,262,262
-Brazil,262,262
-Barbados,262,262
-Brunei Darussalam,262,262
-Bhutan,262,262
-Botswana,262,262
-Central African Republic,262,262
-Canada,131,262
-Switzerland,48,103
-Chile,262,262
-China,133,262
-Cote d'Ivoire,262,262
-Cameroon,262,262
-DR Congo,262,262
-Congo Republic,262,262
-Colombia,262,262
-Comoros,262,262
-Cabo Verde,262,262
-Costa Rica,217,262
-Cuba,262,262
-Curacao,262,262
-Cayman Islands,262,262
-Cyprus,262,262
-Czechia,95,185
-Germany,41,88
-Djibouti,262,262
-Dominica,262,262
-Denmark,54,116
-Dominican Republic,262,262
-Algeria,262,262
-Ecuador,262,262
-Egypt,262,262
-Eritrea,262,262
-Spain,154,262
-Estonia,183,262
-Ethiopia,262,262
-Finland,80,163
-Fiji,262,262
-France,83,177
-Faroe Islands,262,262
-"Micronesia, Fed. Sts.",262,262
-Gabon,262,262
-United Kingdom,83,193
-Georgia,262,262
-Ghana,262,262
-Gibraltar,262,262
-Guinea,262,262
-Gambia,262,262
-Guinea-Bissau,262,262
-Equatorial Guinea,262,262
-Greece,251,262
-Grenada,262,262
-Greenland,262,262
-Guatemala,262,262
-Guam,262,262
-Guyana,262,262
-Hong Kong,262,262
-Honduras,262,262
-Croatia,243,262
-Haiti,262,262
-Hungary,163,262
-Indonesia,262,262
-Isle of Man,262,262
-India,262,262
-Ireland,27,57
-Iran,262,262
-Iraq,262,262
-Iceland,77,168
-Israel,55,120
-Italy,66,152
-Jamaica,262,262
-Jordan,262,262
-Japan,52,176
-Kazakhstan,262,262
-Kenya,262,262
-Kyrgyz Republic,262,262
-Cambodia,262,262
-Kiribati,262,262
-St. Kitts and Nevis,262,262
-South Korea,62,171
-Kuwait,262,262
-Laos,262,262
-Lebanon,262,262
-Liberia,262,262
-Libya,262,262
-St. Lucia,262,262
-Liechtenstein,11,24
-Sri Lanka,262,262
-Lesotho,262,262
-Lithuania,164,262
-Luxembourg,100,214
-Latvia,189,262
-Macau,262,262
-Saint-Martin,262,262
-Morocco,262,262
-Monaco,262,262
-Moldova,262,262
-Madagascar,262,262
-Maldives,262,262
-Mexico,157,262
-Marshall Islands,262,262
-North Macedonia,262,262
-Mali,262,262
-Malta,262,262
-Myanmar,262,262
-Montenegro,262,262
-Mongolia,262,262
-Northern Mariana Islands,262,262
-Mozambique,262,262
-Mauritania,262,262
-Mauritius,262,262
-Malawi,262,262
-Malaysia,204,262
-Namibia,262,262
-New Caledonia,262,262
-Niger,262,262
-Nigeria,262,262
-Nicaragua,262,262
-Netherlands,62,146
-Norway,155,262
-Nepal,262,262
-Nauru,262,262
-New Zealand,135,262
-Oman,262,262
-Pakistan,262,262
-Panama,262,262
-Peru,262,262
-Philippines,262,262
-Palau,262,262
-Papua New Guinea,262,262
-Poland,148,262
-Puerto Rico,262,262
-North Korea,262,262
-Portugal,155,262
-Paraguay,262,262
-Palestine,262,262
-French Polynesia,262,262
-Qatar,105,262
-Romania,262,262
-Russia,262,262
-Rwanda,262,262
-Saudi Arabia,98,245
-Sudan,262,262
-Senegal,262,262
-Singapore,10,17
-Solomon Islands,262,262
-Sierra Leone,262,262
-El Salvador,262,262
-San Marino,262,262
-Somalia,262,262
-Serbia,262,262
-South Sudan,262,262
-Sao Tome and Principe,262,262
-Suriname,262,262
-Slovakia,138,262
-Slovenia,123,262
-Sweden,64,125
-Eswatini,262,262
-Sint Maarten,262,262
-Seychelles,262,262
-Syria,262,262
-Turks and Caicos Islands,262,262
-Chad,262,262
-Togo,262,262
-Thailand,262,262
-Tajikistan,262,262
-Turkmenistan,262,262
-Timor-Leste,262,262
-Tonga,262,262
-Trinidad and Tobago,102,262
-Tunisia,262,262
-Türkiye,262,262
-Tuvalu,262,262
-Tanzania,262,262
-Uganda,262,262
-Ukraine,262,262
-Uruguay,262,262
-United States,48,113
-Uzbekistan,262,262
-St. Vincent and the Grenadines,262,262
-Venezuela,262,262
-British Virgin Islands,262,262
-United States Virgin Islands,262,262
-Vietnam,262,262
-Vanuatu,262,262
-Samoa,262,262
-Kosovo,262,262
-Yemen,262,262
-South Africa,262,262
-Zambia,262,262
-Zimbabwe,262,262
+Region,Indoor Vital in Weeks,Indoor Essential in Weeks
+Aruba,261,261
+Afghanistan,261,261
+Angola,261,261
+Albania,261,261
+Andorra,261,261
+United Arab Emirates,69,180
+Argentina,141,261
+Armenia,261,261
+American Samoa,261,261
+Antigua and Barbuda,261,261
+Australia,91,231
+Austria,39,92
+Azerbaijan,261,261
+Burundi,261,261
+Belgium,59,137
+Benin,261,261
+Burkina Faso,261,261
+Bangladesh,261,261
+Bulgaria,231,261
+Bahrain,60,154
+Bahamas,261,261
+Bosnia and Herzegovina,261,261
+Belarus,261,261
+Belize,261,261
+Bermuda,261,261
+Bolivia,261,261
+Brazil,261,261
+Barbados,261,261
+Brunei Darussalam,261,261
+Bhutan,261,261
+Botswana,261,261
+Central African Republic,261,261
+Canada,81,193
+Switzerland,26,61
+Chile,261,261
+China,98,218
+Côte d'Ivoire,261,261
+Cameroon,261,261
+DR Congo,261,261
+Congo Republic,261,261
+Colombia,261,261
+Comoros,261,261
+Cabo Verde,261,261
+Costa Rica,154,261
+Cuba,261,261
+Curaçao,261,261
+Cayman Islands,261,261
+Cyprus,261,261
+Czechia,52,111
+Germany,22,54
+Djibouti,261,261
+Dominica,261,261
+Denmark,31,78
+Dominican Republic,216,261
+Algeria,261,261
+Ecuador,261,261
+Egypt,261,261
+Eritrea,261,261
+Spain,97,257
+Estonia,102,231
+Ethiopia,261,261
+Finland,47,109
+Fiji,261,261
+France,48,114
+Faroe Islands,261,261
+"Micronesia, Fed. Sts.",261,261
+Gabon,261,261
+United Kingdom,50,133
+Georgia,261,261
+Ghana,261,261
+Gibraltar,261,261
+Guinea,261,261
+Gambia,261,261
+Guinea-Bissau,261,261
+Equatorial Guinea,261,261
+Greece,186,261
+Grenada,261,261
+Greenland,261,261
+Guatemala,261,261
+Guam,261,261
+Guyana,261,261
+Hong Kong,261,261
+Honduras,261,261
+Croatia,146,261
+Haiti,261,261
+Hungary,93,204
+Indonesia,261,261
+Isle of Man,261,261
+India,261,261
+Ireland,18,39
+Iran,261,261
+Iraq,261,261
+Iceland,49,118
+Israel,32,82
+Italy,37,93
+Jamaica,261,261
+Jordan,261,261
+Japan,31,97
+Kazakhstan,234,261
+Kenya,261,261
+Kyrgyzstan,261,261
+Cambodia,261,261
+Kiribati,261,261
+St. Kitts and Nevis,261,261
+South Korea,42,104
+Kuwait,163,261
+Laos,261,261
+Lebanon,261,261
+Liberia,261,261
+Libya,261,261
+St. Lucia,261,261
+Liechtenstein,8,16
+Sri Lanka,261,261
+Lesotho,261,261
+Lithuania,101,231
+Luxembourg,60,140
+Latvia,111,257
+Macau,261,261
+Saint-Martin,261,261
+Morocco,261,261
+Monaco,261,261
+Moldova,261,261
+Madagascar,261,261
+Maldives,261,261
+Mexico,101,261
+Marshall Islands,261,261
+North Macedonia,261,261
+Mali,261,261
+Malta,261,261
+Myanmar,261,261
+Montenegro,261,261
+Mongolia,261,261
+Northern Mariana Islands,261,261
+Mozambique,261,261
+Mauritania,261,261
+Mauritius,261,261
+Malawi,261,261
+Malaysia,157,261
+Namibia,261,261
+New Caledonia,261,261
+Niger,261,261
+Nigeria,261,261
+Nicaragua,261,261
+Netherlands,37,97
+Norway,92,226
+Nepal,261,261
+Nauru,261,261
+New Zealand,87,211
+Oman,261,261
+Pakistan,261,261
+Panama,261,261
+Peru,261,261
+Philippines,261,261
+Palau,261,261
+Papua New Guinea,261,261
+Poland,89,197
+Puerto Rico,261,261
+North Korea,261,261
+Portugal,94,237
+Paraguay,261,261
+Palestine,261,261
+French Polynesia,261,261
+Qatar,62,162
+Romania,181,261
+Russia,240,261
+Rwanda,261,261
+Saudi Arabia,58,151
+Sudan,261,261
+Senegal,261,261
+Singapore,7,12
+Solomon Islands,261,261
+Sierra Leone,261,261
+El Salvador,261,261
+San Marino,261,261
+Somalia,261,261
+Serbia,261,261
+South Sudan,261,261
+Sao Tome and Principe,261,261
+Suriname,261,261
+Slovakia,76,170
+Slovenia,66,157
+Sweden,36,83
+Eswatini,261,261
+Sint Maarten,261,261
+Seychelles,261,261
+Syria,261,261
+Turks and Caicos Islands,261,261
+Chad,261,261
+Togo,261,261
+Thailand,261,261
+Tajikistan,261,261
+Turkmenistan,261,261
+Timor-Leste,261,261
+Tonga,261,261
+Trinidad and Tobago,57,152
+Tunisia,261,261
+Türkiye,261,261
+Tuvalu,261,261
+Tanzania,261,261
+Uganda,261,261
+Ukraine,261,261
+Uruguay,202,261
+United States,28,73
+Uzbekistan,261,261
+St. Vincent and the Grenadines,261,261
+Venezuela,261,261
+British Virgin Islands,261,261
+United States Virgin Islands,261,261
+Vietnam,261,261
+Vanuatu,261,261
+Samoa,261,261
+Kosovo,261,261
+Yemen,261,261
+South Africa,229,261
+Zambia,261,261
+Zimbabwe,261,261
