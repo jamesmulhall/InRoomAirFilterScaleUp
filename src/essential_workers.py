@@ -43,15 +43,21 @@ simplification:
     ``GROUP_OVERLAP[g]`` is the global aggregate fraction of workers in
     occupational group g that are also in a key ISIC industry.
 
-In effect we assume the ISCO × ISIC overlap structure is **identical
-across all countries**, taking the global mean as a proxy. It is not.
-For example, a much larger share of "Manual" workers in low-income
-agrarian economies (Liberia, Madagascar) are in essential agriculture
-than in high-income economies, but our model uses the same 0.335
-overlap factor for both. This is the dominant source of the
-per-country deviations flagged by :func:`validate_against_ilo` (see
-``tests/test_essential_workers.py::test_no_country_deviates_more_than_10pp``
-which currently flags 7 countries above the 10pp threshold).
+**Per-country calibration (default pipeline).** Global
+:data:`GROUP_OVERLAP` values are Figure A1 priors. For each country with
+ILO ISCO employment and a published WESO %essential, a scalar ``x ∈ [0, 1]``
+adjusts all eight calibratable groups together (toward 1 when raising,
+toward 0 when lowering); Armed Forces stays at 0.40. Vital and essential
+totals both use the calibrated overlaps. Countries without ILO microdata
+receive neighbour-averaged overlaps via :data:`SIMILAR_ISO3` (not global
+priors). Where a single ``x`` cannot reach the ILO target even at
+``x = 1``, the solver flags ``infeasible_clipped`` (documented in
+``Group_Overlap_Calibration.csv``).
+
+Before calibration, assuming identical overlap structure across countries
+was the dominant source of deviation from ILO published shares; the pipeline
+logs both model (global overlap) and calibrated series in
+``Essential_Workers_Validation.csv``.
 
 Two other simplifications worth flagging:
 
@@ -226,6 +232,36 @@ GROUP_OVERLAP: Dict[str, float] = {
     "ArmedForces": 0.40,
 }
 
+# Armed Forces overlap is never calibrated (Blueprint assumption).
+ARMED_FORCES_OVERLAP_FIXED = 0.40
+
+# Groups adjusted by per-country scalar ``x`` (all except ArmedForces).
+CALIBRATABLE_GROUPS: tuple[str, ...] = tuple(
+    g for g in GROUP_OVERLAP if g != "ArmedForces"
+)
+
+OVERLAP_COL_PREFIX = "overlap_"
+
+
+def overlap_column(group: str) -> str:
+    """Column name for a group's calibrated overlap in LF / calibration tables."""
+    return f"{OVERLAP_COL_PREFIX}{group}"
+
+
+CALIBRATABLE_OVERLAP_COLUMNS: tuple[str, ...] = tuple(
+    overlap_column(g) for g in CALIBRATABLE_GROUPS
+)
+
+OVERLAP_SOURCE_ILO = "ilo_calibrated"
+OVERLAP_SOURCE_NEIGHBOUR = "neighbour_backfill"
+OVERLAP_SOURCE_GLOBAL = "global_fallback"
+
+ESSENTIAL_PCT_TOLERANCE_PP = 0.01
+
+# Labour-force / ILO published names that differ from ``ref_area.label`` in
+# ``ILO_ISCO_08_GLB.csv`` (country_converter short names).
+EMPLOYMENT_COUNTRY_ALIASES: Dict[str, str] = {}
+
 # ISCO-08 level-2 codes that the team's in-house poll classified as
 # "vital" but that ILO Table A2 explicitly excludes from key occupations
 # on teleworkability grounds (e.g. 13 = ICT professionals, 21 = Science
@@ -236,6 +272,22 @@ NON_ILO_POLL_CODES = ["13", "21", "33", "35"]
 
 # Armed-forces ISCO-08 level-2 codes used for diagnostic sub-totals.
 ARMED_FORCES_L2 = ("01", "02", "03")
+
+# Subsistence farmers (ISCO-08 L2). They are essential/vital per ILO Table A2
+# but treated as 100% outdoor and assumed to live on-site already.
+SUBSISTENCE_FARMERS_ISCO_L2 = "63"
+
+# ISCO L2 codes excluded from on-site housing requirements: market-oriented
+# skilled agricultural workers (61) and subsistence farmers (63). These codes
+# usually represent the operators, managers, and owners of farms.We assume
+# they live on-site in their own private housing, such as a single-family home
+# on a farm. We do not exclude ISCO code 92 (Agricultural, forestry, and
+# fishinq workers) as they may be living in poor quality high-density housing.
+# For example, seasonal farm workers in the US had high rates of COVID-19
+# infection while living in on-site dorms. They would need safer housing in
+# a future pandemic.
+
+ONSITE_HOUSING_EXCLUDED_ISCO_L2 = ("61", "63")
 
 # Manual indoor-context overrides for the level-4 codes which would otherwise
 # be missing context data (commissioned officer roles).
@@ -352,7 +404,7 @@ SIMILAR_ISO3: Dict[str, list] = {
 }
 
 
-# Shared country converter instance (creating it is expensive).
+# Shared country converter instance
 _CC = coco.CountryConverter()
 
 
@@ -369,40 +421,38 @@ def _normalise_country_keys(d: Dict[str, Any]) -> Dict[str, Any]:
     }
 
 
+def employment_for_country(
+    country: str,
+    employment_by_iso: Dict[str, Dict[str, float]],
+) -> Optional[Dict[str, float]]:
+    """Look up ILO ISCO employment for a labour-force country name."""
+    if country in employment_by_iso:
+        return employment_by_iso[country]
+    alias = EMPLOYMENT_COUNTRY_ALIASES.get(country)
+    if alias and alias in employment_by_iso:
+        return employment_by_iso[alias]
+    return None
+
+
+def overlap_calibration_feasible(
+    overlap_country_df: pd.DataFrame,
+) -> pd.Series:
+    """Boolean mask: countries with ILO calibration that reached the target (``ok``)."""
+    return overlap_country_df["solver_status"].isin(("ok", "exact_at_baseline"))
+
+
 # ---------------------------------------------------------------------------
 # 1. ISCO-08 level-2 weights
 # ---------------------------------------------------------------------------
 
 
-def build_isco_lvl2_weights(
+def _build_isco_lvl2_template(
     poll_df: pd.DataFrame,
     onet_df: pd.DataFrame,
     crosswalk_df: pd.DataFrame,
     soc_to_isco_aggregator: str = "mean",
 ) -> pd.DataFrame:
-    """Build the ``ISCO_LVL2_WEIGHTS`` table.
-
-    Parameters
-    ----------
-    poll_df:
-        Wide poll spreadsheet with columns ``"ISCO-08"`` and ``"Census"``.
-        ``ISCO-08`` may be int or str.
-    onet_df:
-        ONET indoor-context data with columns ``"Code"`` (SOC code, possibly
-        with a ``.``-separated suffix) and ``"Context"`` (0-100 percent).
-    crosswalk_df:
-        SOC <-> ISCO-08 crosswalk with columns ``"2010 SOC Code"`` and
-        ``"ISCO-08 Code"``.
-    soc_to_isco_aggregator:
-        How to combine multiple SOC codes that crosswalk to the same ISCO
-        code (~43% of the ISCO codes touched have >1 SOC contribution).
-        ``"mean"`` (default) averages all SOC contexts mapping to an ISCO
-        code, which is the methodologically correct choice. ``"last"``
-        keeps only the last SOC code seen in iteration order, which
-        reproduces the notebook's pre-refactor behaviour exactly (the
-        notebook's gating check compared SOC keys against ISCO keys and so
-        never triggered the accumulate branch). Use ``"last"`` only when
-        you need to regress against the older notebook outputs.
+    """ISCO L2 table before group overlaps (poll, context, essential flags, group).
 
     Returns
     -------
@@ -526,15 +576,32 @@ def build_isco_lvl2_weights(
         if code in lvl2.index:
             lvl2.at[code, "Vital Weight POLL"] = 0
 
-    # Attach group + group overlap then compute the four weight columns.
-    # The Group Overlap multiplication below is how we approximate the
-    # ISCO ∩ ISIC intersection in the ILO methodology. Because we apply
-    # a single global factor per group to every country, this is the
-    # main reason our per-country %Essential can diverge from ILO's
-    # published per-country figures (see module docstring and
-    # ``validate_against_ilo``).
     lvl2["Group"] = lvl2.index.map(ISCO_L2_TO_GROUP)
-    lvl2["Group Overlap"] = lvl2["Group"].map(GROUP_OVERLAP).fillna(0.0)
+    return lvl2
+
+
+def build_isco_lvl2_weights(
+    poll_df: pd.DataFrame,
+    onet_df: pd.DataFrame,
+    crosswalk_df: pd.DataFrame,
+    soc_to_isco_aggregator: str = "mean",
+) -> pd.DataFrame:
+    """Build ``ISCO_LVL2_WEIGHTS`` with global :data:`GROUP_OVERLAP`."""
+    template = _build_isco_lvl2_template(
+        poll_df, onet_df, crosswalk_df, soc_to_isco_aggregator
+    )
+    return apply_group_overlaps(template, GROUP_OVERLAP)
+
+
+def apply_group_overlaps(
+    lvl2_template: pd.DataFrame,
+    group_overlaps: Dict[str, float],
+) -> pd.DataFrame:
+    """Attach per-group overlaps and compute the four ISCO weight columns."""
+    lvl2 = lvl2_template.copy()
+    overlaps = dict(group_overlaps)
+    overlaps["ArmedForces"] = ARMED_FORCES_OVERLAP_FIXED
+    lvl2["Group Overlap"] = lvl2["Group"].map(overlaps).fillna(0.0)
 
     lvl2["ISCO_08_PollWeights"] = (
         lvl2["Vital Weight POLL"] * lvl2["Context Proj"] * lvl2["Group Overlap"]
@@ -586,6 +653,419 @@ def build_employment_by_isco(ilo_df: pd.DataFrame) -> Dict[str, Dict[str, float]
     return nested  # type: ignore[return-value]
 
 
+# ---------------------------------------------------------------------------
+# 2b. Per-country group overlap calibration (ILO baseline)
+# ---------------------------------------------------------------------------
+
+
+def essential_mass_by_group(
+    employment: Dict[str, float],
+    weights_template: pd.DataFrame,
+) -> Dict[str, float]:
+    """Employment in essential ISCO codes, summed by ILO Figure A1 group (no overlap)."""
+    masses = {g: 0.0 for g in GROUP_OVERLAP}
+    for code, emp in employment.items():
+        code_str = str(code).strip()
+        if code_str == "Tot" or not pd.notna(emp):
+            continue
+        if code_str not in weights_template.index:
+            continue
+        if weights_template.at[code_str, "Essential Weight ILO"] != 1:
+            continue
+        group = weights_template.at[code_str, "Group"]
+        if group in masses:
+            masses[group] += float(emp)
+    return masses
+
+
+def essential_mass_at_overlaps(
+    masses_by_group: Dict[str, float],
+    group_overlaps: Dict[str, float],
+) -> float:
+    """Weighted essential employment mass ``Σ_g o_g × S_g``."""
+    return sum(
+        float(group_overlaps.get(g, 0.0)) * float(masses_by_group.get(g, 0.0))
+        for g in GROUP_OVERLAP
+    )
+
+
+@dataclass
+class OverlapCalibrationResult:
+    """Per-country overlap calibration vs global ``GROUP_OVERLAP``."""
+
+    overlaps_by_country: Dict[str, Dict[str, float]]
+    country_table: pd.DataFrame
+    detail_df: pd.DataFrame
+
+
+def calibrate_group_overlaps(
+    masses_by_group: Dict[str, float],
+    target_essential: float,
+    baseline: Optional[Dict[str, float]] = None,
+    *,
+    tol: float = 1e-6,
+) -> tuple[Dict[str, float], float, str, str]:
+    """Solve scalar ``x`` so essential mass matches ``target_essential``.
+
+    Uses proportional headroom toward 1 (raise) or toward 0 (lower). Armed
+    Forces overlap is fixed at :data:`ARMED_FORCES_OVERLAP_FIXED`.
+
+    Returns ``(overlaps, x, direction, status)`` where ``status`` is
+    ``ok``, ``exact_at_baseline``, or ``infeasible_clipped``.
+    """
+    baseline = dict(baseline or GROUP_OVERLAP)
+    o0 = {g: float(baseline[g]) for g in GROUP_OVERLAP}
+    o0["ArmedForces"] = ARMED_FORCES_OVERLAP_FIXED
+
+    e0 = essential_mass_at_overlaps(masses_by_group, o0)
+    target = float(target_essential)
+
+    if target <= 0:
+        overlaps = {
+            g: 0.0 if g != "ArmedForces" else ARMED_FORCES_OVERLAP_FIXED
+            for g in GROUP_OVERLAP
+        }
+        return overlaps, 1.0, "lower", "ok"
+
+    if abs(e0 - target) <= tol * max(target, 1.0):
+        return dict(o0), 0.0, "none", "exact_at_baseline"
+
+    if e0 < target:
+        direction = "raise"
+        denom = sum(
+            (1.0 - o0[g]) * masses_by_group.get(g, 0.0) for g in CALIBRATABLE_GROUPS
+        )
+        x_raw = 1.0 if denom <= 0 else (target - e0) / denom
+        x = float(np.clip(x_raw, 0.0, 1.0))
+        overlaps = {
+            g: (
+                ARMED_FORCES_OVERLAP_FIXED
+                if g == "ArmedForces"
+                else o0[g] + x * (1.0 - o0[g])
+            )
+            for g in GROUP_OVERLAP
+        }
+    else:
+        direction = "lower"
+        denom = sum(o0[g] * masses_by_group.get(g, 0.0) for g in CALIBRATABLE_GROUPS)
+        x_raw = 1.0 if denom <= 0 else (e0 - target) / denom
+        x = float(np.clip(x_raw, 0.0, 1.0))
+        overlaps = {
+            g: (ARMED_FORCES_OVERLAP_FIXED if g == "ArmedForces" else o0[g] * (1.0 - x))
+            for g in GROUP_OVERLAP
+        }
+
+    e1 = essential_mass_at_overlaps(masses_by_group, overlaps)
+    if abs(x_raw - x) > 1e-5 or abs(e1 - target) > tol * max(target, 1.0):
+        status = "infeasible_clipped"
+    else:
+        status = "ok"
+    return overlaps, x, direction, status
+
+
+def _ilo_target_essential(
+    tot_employment: float,
+    ilo_pct_essential: float,
+) -> float:
+    return (ilo_pct_essential / 100.0) * tot_employment
+
+
+def calibrate_overlaps_for_country(
+    country: str,
+    employment: Dict[str, float],
+    weights_template: pd.DataFrame,
+    ilo_pct_essential: float,
+) -> tuple[Dict[str, float], dict]:
+    """Calibrate overlaps for one country with ILO microdata and published %."""
+    tot = employment.get("Tot")
+    if not tot or not pd.notna(tot) or tot <= 0:
+        raise ValueError(f"{country}: invalid Tot employment")
+    masses = essential_mass_by_group(employment, weights_template)
+    target = _ilo_target_essential(tot, ilo_pct_essential)
+    overlaps, x, direction, status = calibrate_group_overlaps(masses, target)
+    e0 = essential_mass_at_overlaps(masses, GROUP_OVERLAP)
+    meta = {
+        "calibration_x": x,
+        "calibration_direction": direction,
+        "solver_status": status,
+        "model_essential_mass": e0,
+        "ilo_target_mass": target,
+        "overlap_source": OVERLAP_SOURCE_ILO,
+    }
+    return overlaps, meta
+
+
+def build_overlap_country_table(
+    lf_df: pd.DataFrame,
+    employment_by_iso: Dict[str, Dict[str, float]],
+    ilo_pct_df: pd.DataFrame,
+    weights_template: pd.DataFrame,
+) -> tuple[pd.DataFrame, Dict[str, Dict[str, float]], Dict[str, dict]]:
+    """Calibrate overlaps for countries with ILO emp + published %; NaN otherwise."""
+    ilo_lookup = ilo_pct_df.set_index("Country Name")[
+        "ILO %essential (published)"
+    ].to_dict()
+    rows = []
+    overlaps_by_country: Dict[str, Dict[str, float]] = {}
+    meta_by_country: Dict[str, dict] = {}
+
+    for _, lf_row in lf_df.iterrows():
+        country = lf_row["Country Name"]
+        code = lf_row["Country Code"]
+        row = {
+            "Country Name": country,
+            "Country Code": code,
+        }
+        for col in CALIBRATABLE_OVERLAP_COLUMNS:
+            row[col] = np.nan
+        row["calibration_x"] = np.nan
+        row["calibration_direction"] = ""
+        row["solver_status"] = ""
+        row["overlap_source"] = ""
+
+        emp = employment_for_country(country, employment_by_iso)
+        ilo_pct = ilo_lookup.get(country)
+        if emp and ilo_pct is not None and pd.notna(ilo_pct):
+            tot = emp.get("Tot")
+            if tot and pd.notna(tot) and tot > 0:
+                overlaps, meta = calibrate_overlaps_for_country(
+                    country, emp, weights_template, float(ilo_pct)
+                )
+                overlaps_by_country[country] = overlaps
+                meta_by_country[country] = meta
+                for g in CALIBRATABLE_GROUPS:
+                    row[overlap_column(g)] = overlaps[g]
+                row["calibration_x"] = meta["calibration_x"]
+                row["calibration_direction"] = meta["calibration_direction"]
+                row["solver_status"] = meta["solver_status"]
+                row["overlap_source"] = meta["overlap_source"]
+                row["model_essential_mass"] = meta["model_essential_mass"]
+                row["ilo_target_mass"] = meta["ilo_target_mass"]
+
+        rows.append(row)
+
+    return pd.DataFrame(rows), overlaps_by_country, meta_by_country
+
+
+def backfill_calibrated_overlaps(
+    overlap_df: pd.DataFrame,
+    similar_iso3: Optional[Dict[str, list]] = None,
+    *,
+    max_iterations: int = 50,
+) -> pd.DataFrame:
+    """Fill NaN group overlaps from SIMILAR_ISO3 neighbours' calibrated values."""
+    if similar_iso3 is None:
+        similar_iso3 = SIMILAR_ISO3
+    df = overlap_df.copy()
+    fill_cols = list(CALIBRATABLE_OVERLAP_COLUMNS) + ["calibration_x"]
+
+    for _ in range(max_iterations):
+        still_missing = False
+        for idx, row in df.iterrows():
+            if not pd.isna(row.get(overlap_column(CALIBRATABLE_GROUPS[0]))):
+                continue
+            neighbours = similar_iso3.get(row["Country Code"], [])
+            for col in CALIBRATABLE_OVERLAP_COLUMNS:
+                values = []
+                for iso in neighbours:
+                    n_row = df.loc[df["Country Code"] == iso]
+                    if n_row.empty:
+                        continue
+                    if n_row.iloc[0]["overlap_source"] not in (
+                        OVERLAP_SOURCE_ILO,
+                        OVERLAP_SOURCE_NEIGHBOUR,
+                    ):
+                        continue
+                    v = n_row.iloc[0][col]
+                    if pd.notna(v):
+                        values.append(float(v))
+                if values:
+                    df.at[idx, col] = sum(values) / len(values)
+                else:
+                    still_missing = True
+            if not pd.isna(df.at[idx, overlap_column(CALIBRATABLE_GROUPS[0])]):
+                sources = []
+                for iso in neighbours:
+                    n_row = df.loc[df["Country Code"] == iso]
+                    if (
+                        not n_row.empty
+                        and n_row.iloc[0]["overlap_source"] == OVERLAP_SOURCE_ILO
+                    ):
+                        sources.append(iso)
+                if sources:
+                    df.at[idx, "overlap_source"] = OVERLAP_SOURCE_NEIGHBOUR
+                x_vals = [
+                    float(df.loc[df["Country Code"] == iso, "calibration_x"].iloc[0])
+                    for iso in neighbours
+                    if not df.loc[df["Country Code"] == iso, "calibration_x"].empty
+                    and pd.notna(
+                        df.loc[df["Country Code"] == iso, "calibration_x"].iloc[0]
+                    )
+                ]
+                if x_vals:
+                    df.at[idx, "calibration_x"] = sum(x_vals) / len(x_vals)
+        if not still_missing:
+            break
+
+    for idx, row in df.iterrows():
+        if pd.isna(row.get(overlap_column(CALIBRATABLE_GROUPS[0]))):
+            for g in CALIBRATABLE_GROUPS:
+                df.at[idx, overlap_column(g)] = GROUP_OVERLAP[g]
+            df.at[idx, "overlap_source"] = OVERLAP_SOURCE_GLOBAL
+            df.at[idx, "solver_status"] = "global_fallback"
+            df.at[idx, "calibration_x"] = 0.0
+
+    return df
+
+
+def overlap_df_to_dict(row: pd.Series) -> Dict[str, float]:
+    """Row with ``overlap_*`` columns → group overlap dict including ArmedForces."""
+    out = dict(GROUP_OVERLAP)
+    for g in CALIBRATABLE_GROUPS:
+        col = overlap_column(g)
+        if col in row.index and pd.notna(row[col]):
+            out[g] = float(row[col])
+    out["ArmedForces"] = ARMED_FORCES_OVERLAP_FIXED
+    return out
+
+
+def build_group_overlap_calibration_detail(
+    lf_df: pd.DataFrame,
+    overlap_country_df: pd.DataFrame,
+    employment_by_iso: Dict[str, Dict[str, float]],
+    weights_template: pd.DataFrame,
+    ilo_pct_df: pd.DataFrame,
+    workers_model: WorkerDicts,
+    workers_calibrated: WorkerDicts,
+) -> pd.DataFrame:
+    """Long-format table for paper / diagnostics (country × group)."""
+    ilo_lookup = ilo_pct_df.set_index("Country Name")[
+        "ILO %essential (published)"
+    ].to_dict()
+    records = []
+    for _, orow in overlap_country_df.iterrows():
+        country = orow["Country Name"]
+        emp = employment_for_country(country, employment_by_iso) or {}
+        masses = essential_mass_by_group(emp, weights_template) if emp else {}
+        model_pct = workers_model.ew_pc.get(country)
+        cal_pct = workers_calibrated.ew_pc.get(country)
+        ilo_pct = ilo_lookup.get(country)
+        for g in GROUP_OVERLAP:
+            o0 = GROUP_OVERLAP[g]
+            if g == "ArmedForces":
+                og = ARMED_FORCES_OVERLAP_FIXED
+            else:
+                og = float(orow.get(overlap_column(g), np.nan))
+                if pd.isna(og):
+                    og = o0
+            records.append(
+                {
+                    "Country Name": country,
+                    "Country Code": orow["Country Code"],
+                    "Group": g,
+                    "Global overlap": o0,
+                    "Calibrated overlap": og,
+                    "Adjustment": og - o0,
+                    "Group essential mass S_g": masses.get(g, np.nan),
+                    "Overlap source": orow.get("overlap_source", ""),
+                    "calibration_x": orow.get("calibration_x", np.nan),
+                    "ILO %essential (published)": ilo_pct,
+                    "Model %Essential (pct)": (
+                        100 * model_pct
+                        if model_pct is not None and pd.notna(model_pct)
+                        else np.nan
+                    ),
+                    "Calibrated %Essential (pct)": (
+                        100 * cal_pct
+                        if cal_pct is not None and pd.notna(cal_pct)
+                        else np.nan
+                    ),
+                    "Delta model (pp)": (
+                        100 * model_pct - ilo_pct
+                        if model_pct is not None
+                        and pd.notna(model_pct)
+                        and ilo_pct is not None
+                        and pd.notna(ilo_pct)
+                        else np.nan
+                    ),
+                    "Delta calibrated (pp)": (
+                        100 * cal_pct - ilo_pct
+                        if cal_pct is not None
+                        and pd.notna(cal_pct)
+                        and ilo_pct is not None
+                        and pd.notna(ilo_pct)
+                        else np.nan
+                    ),
+                    "solver_status": orow.get("solver_status", ""),
+                }
+            )
+    return pd.DataFrame(records)
+
+
+def calibrate_country_overlaps(
+    lf_df: pd.DataFrame,
+    employment_by_iso: Dict[str, Dict[str, float]],
+    ilo_pct_df: pd.DataFrame,
+    weights_template: pd.DataFrame,
+    workers_model: Optional["WorkerDicts"] = None,
+    workers_calibrated: Optional["WorkerDicts"] = None,
+) -> OverlapCalibrationResult:
+    """Full overlap calibration + neighbour back-fill for all LF countries."""
+    country_df, _overlaps_ilo, _meta = build_overlap_country_table(
+        lf_df, employment_by_iso, ilo_pct_df, weights_template
+    )
+    country_df = backfill_calibrated_overlaps(country_df)
+    overlaps_by_country: Dict[str, Dict[str, float]] = {}
+    for _, row in country_df.iterrows():
+        overlaps_by_country[row["Country Name"]] = overlap_df_to_dict(row)
+
+    detail_df = pd.DataFrame()
+    if workers_model is not None and workers_calibrated is not None:
+        detail_df = build_group_overlap_calibration_detail(
+            lf_df,
+            country_df,
+            employment_by_iso,
+            weights_template,
+            ilo_pct_df,
+            workers_model,
+            workers_calibrated,
+        )
+
+    return OverlapCalibrationResult(
+        overlaps_by_country=overlaps_by_country,
+        country_table=country_df,
+        detail_df=detail_df,
+    )
+
+
+def build_dual_validation_merged(
+    lf_df: pd.DataFrame,
+    ilo_pct_df: pd.DataFrame,
+    workers_model: WorkerDicts,
+    validation_calibrated: ValidationResult,
+) -> pd.DataFrame:
+    """Merge calibrated validation with pre-calibration (global overlap) %Essential."""
+    merged = validation_calibrated.merged_df.copy()
+    merged["Our %Essential (model, global overlap)"] = merged["Country Name"].map(
+        lambda c: (
+            100.0 * workers_model.ew_pc[c]
+            if c in workers_model.ew_pc and pd.notna(workers_model.ew_pc[c])
+            else np.nan
+        )
+    )
+    merged["Delta model (pp)"] = (
+        merged["Our %Essential (model, global overlap)"]
+        - merged["ILO %essential (published)"]
+    )
+    merged = merged.rename(
+        columns={
+            "Our %Essential (pct)": "Our %Essential (calibrated)",
+            "Delta (pp)": "Delta calibrated (pp)",
+        }
+    )
+    return merged
+
+
 @dataclass
 class WorkerDicts:
     """Bundle of per-country worker counts and percentages."""
@@ -606,17 +1086,27 @@ class WorkerDicts:
 
 def compute_worker_dicts(
     employment_by_iso: Dict[str, Dict[str, float]],
-    weights: pd.DataFrame,
+    weights_template: pd.DataFrame,
+    overlaps_by_country: Optional[Dict[str, Dict[str, float]]] = None,
 ) -> WorkerDicts:
-    """Compute per-country indoor / total essential & vital worker counts."""
-    poll_w = weights["ISCO_08_PollWeights"].to_dict()
-    ilo_w = weights["ISCO_08_ILOWeights"].to_dict()
-    poll_w_total = weights["ISCO_08_PollWeights_Total"].to_dict()
-    ilo_w_total = weights["ISCO_08_ILOWeights_Total"].to_dict()
+    """Compute per-country indoor / total essential & vital worker counts.
+
+    When ``overlaps_by_country`` is provided, each country's group overlaps
+    are applied via :func:`apply_group_overlaps` before summing employment.
+    Otherwise global :data:`GROUP_OVERLAP` is used for every country.
+    """
+    if overlaps_by_country is None:
+        overlaps_by_country = {c: dict(GROUP_OVERLAP) for c in employment_by_iso}
 
     out = WorkerDicts()
 
     for country, code_dict in employment_by_iso.items():
+        overlaps = overlaps_by_country.get(country, GROUP_OVERLAP)
+        weights = apply_group_overlaps(weights_template, overlaps)
+        poll_w = weights["ISCO_08_PollWeights"].to_dict()
+        ilo_w = weights["ISCO_08_ILOWeights"].to_dict()
+        poll_w_total = weights["ISCO_08_PollWeights_Total"].to_dict()
+        ilo_w_total = weights["ISCO_08_ILOWeights_Total"].to_dict()
         iew = ew = ivw = vw = 0.0
         af_ind_e = af_e = 0.0
         for code, employment in code_dict.items():
@@ -658,6 +1148,160 @@ def compute_worker_dicts(
     return out
 
 
+def _employment_in_codes(
+    emp: Dict[str, float],
+    codes: Iterable[str],
+    weights_by_code: Optional[Dict[str, float]] = None,
+) -> float:
+    """Sum employment for ISCO L2 codes, optionally multiplied by per-code weights."""
+    total = 0.0
+    for code in codes:
+        w = 1.0 if weights_by_code is None else float(weights_by_code.get(code, 0.0))
+        for k, n in emp.items():
+            if str(k).strip() == code and pd.notna(n):
+                total += float(n) * w
+                break
+    return total
+
+
+def _onsite_excluded_weighted_employment_pct(
+    employment_by_iso: Dict[str, Dict[str, float]],
+    country: str,
+    weights: pd.DataFrame,
+    weight_column: str,
+    codes: Iterable[str] = ONSITE_HOUSING_EXCLUDED_ISCO_L2,
+) -> float:
+    """Share of ILO employment in excluded codes, weighted for one worker series."""
+    emp = employment_by_iso.get(country)
+    if not emp:
+        return np.nan
+    tot = emp.get("Tot")
+    if not tot or not pd.notna(tot) or tot <= 0:
+        return np.nan
+    w_by_code = weights[weight_column].to_dict()
+    return _employment_in_codes(emp, codes, w_by_code) / tot
+
+
+def _country_weights_for_onsite(
+    weights_template: pd.DataFrame,
+    country: str,
+    overlaps_by_country: Optional[Dict[str, Dict[str, float]]],
+) -> pd.DataFrame:
+    """Per-country weight table for on-site excluded shares."""
+    if (
+        overlaps_by_country is None
+        and "ISCO_08_ILOWeights_Total" in weights_template.columns
+    ):
+        return weights_template
+    overlaps = (overlaps_by_country or {}).get(country, GROUP_OVERLAP)
+    return apply_group_overlaps(weights_template, overlaps)
+
+
+def onsite_excluded_essential_employment_pct(
+    employment_by_iso: Dict[str, Dict[str, float]],
+    country: str,
+    weights_template: pd.DataFrame,
+    overlaps_by_country: Optional[Dict[str, Dict[str, float]]] = None,
+    codes: Iterable[str] = ONSITE_HOUSING_EXCLUDED_ISCO_L2,
+) -> float:
+    """Share of employment contributing to total essential for excluded codes.
+
+    Weighted by ``ISCO_08_ILOWeights_Total``, matching :func:`compute_worker_dicts`
+    / ``%Essential Workers``.
+    """
+    weights = _country_weights_for_onsite(
+        weights_template, country, overlaps_by_country
+    )
+    return _onsite_excluded_weighted_employment_pct(
+        employment_by_iso, country, weights, "ISCO_08_ILOWeights_Total", codes
+    )
+
+
+def onsite_excluded_vital_employment_pct(
+    employment_by_iso: Dict[str, Dict[str, float]],
+    country: str,
+    weights_template: pd.DataFrame,
+    overlaps_by_country: Optional[Dict[str, Dict[str, float]]] = None,
+    codes: Iterable[str] = ONSITE_HOUSING_EXCLUDED_ISCO_L2,
+) -> float:
+    """Share of employment contributing to total vital for excluded codes.
+
+    Weighted by ``ISCO_08_PollWeights_Total``, matching :func:`compute_worker_dicts`
+    / ``%Vital Workers``.
+    """
+    weights = _country_weights_for_onsite(
+        weights_template, country, overlaps_by_country
+    )
+    return _onsite_excluded_weighted_employment_pct(
+        employment_by_iso, country, weights, "ISCO_08_PollWeights_Total", codes
+    )
+
+
+ONSITE_EXCLUDED_ESSENTIAL_PCT_COL = "%Onsite Excluded Essential (ISCO 61+63)"
+ONSITE_EXCLUDED_VITAL_PCT_COL = "%Onsite Excluded Vital (ISCO 61+63)"
+
+
+def attach_onsite_excluded_pct(
+    lf_df: pd.DataFrame,
+    employment_by_iso: Dict[str, Dict[str, float]],
+    weights_template: pd.DataFrame,
+    overlaps_by_country: Optional[Dict[str, Dict[str, float]]] = None,
+) -> pd.DataFrame:
+    """Attach ILO- and poll-weighted excluded shares for essential and vital."""
+    df = lf_df.copy()
+    df[ONSITE_EXCLUDED_ESSENTIAL_PCT_COL] = df["Country Name"].map(
+        lambda c: onsite_excluded_essential_employment_pct(
+            employment_by_iso, c, weights_template, overlaps_by_country
+        )
+    )
+    df[ONSITE_EXCLUDED_VITAL_PCT_COL] = df["Country Name"].map(
+        lambda c: onsite_excluded_vital_employment_pct(
+            employment_by_iso,
+            c,
+            weights_template,
+            overlaps_by_country,
+        )
+    )
+    return df
+
+
+def build_onsite_housing_worker_requirements(
+    lf_df: pd.DataFrame,
+    lf_col: str = "Labour Force (2024)",
+    excluded_essential_col: str = ONSITE_EXCLUDED_ESSENTIAL_PCT_COL,
+    excluded_vital_col: str = ONSITE_EXCLUDED_VITAL_PCT_COL,
+) -> pd.DataFrame:
+    """Essential/vital totals minus LF-scaled on-site-excluded ISCO 61 and 63.
+
+    Essential and vital each subtract only the slice counted in their totals:
+    ``ISCO_08_ILOWeights_Total`` and ``ISCO_08_PollWeights_Total`` respectively.
+    """
+    excluded_essential = lf_df[excluded_essential_col].fillna(0.0) * lf_df[lf_col]
+    excluded_vital = lf_df[excluded_vital_col].fillna(0.0) * lf_df[lf_col]
+
+    out = lf_df[
+        ["Country Name", "Country Code", "Essential Workers", "Vital Workers"]
+    ].copy()
+    out["Essential Workers (Housing Requirement)"] = (
+        lf_df["Essential Workers"] - excluded_essential
+    )
+    out["Vital Workers (Housing Requirement)"] = lf_df["Vital Workers"] - excluded_vital
+
+    global_row = {
+        "Country Name": "Global",
+        "Country Code": "GLOBAL",
+        "Essential Workers (Housing Requirement)": out[
+            "Essential Workers (Housing Requirement)"
+        ].sum(skipna=True),
+        "Vital Workers (Housing Requirement)": out[
+            "Vital Workers (Housing Requirement)"
+        ].sum(skipna=True),
+        "Essential Workers": lf_df["Essential Workers"].sum(skipna=True),
+        "Vital Workers": lf_df["Vital Workers"].sum(skipna=True),
+    }
+    return pd.concat([pd.DataFrame([global_row]), out], ignore_index=True)
+
+
 # ---------------------------------------------------------------------------
 # 3. Labour force join, back-fill and absolute counts
 # ---------------------------------------------------------------------------
@@ -685,6 +1329,13 @@ _COUNT_COLUMNS = [
     ("Armed Forces (Indoor Essential)", "%Armed Forces (Indoor Essential)"),
     ("Armed Forces (Essential)", "%Armed Forces (Essential)"),
 ]
+
+ONSITE_HOUSING_WORKER_COUNT_COLUMNS: tuple[str, ...] = (
+    "Essential Workers (Housing Requirement)",
+    "Vital Workers (Housing Requirement)",
+    "Essential Workers",
+    "Vital Workers",
+)
 
 
 def prepare_labour_force(lf_df: pd.DataFrame) -> pd.DataFrame:
@@ -768,6 +1419,58 @@ def compute_absolute_counts(
     return df
 
 
+def compute_global_worker_summary(
+    lf_df: pd.DataFrame, lf_col: str = "Labour Force (2024)"
+) -> pd.DataFrame:
+    """Summarise global worker counts and shares of the labour force.
+
+    Returns one row each for total Essential and Vital workers, plus indoor
+    and outdoor splits for each. Outdoor counts are the residual of total
+    minus indoor (jobs not classified as indoors under the ONET context
+    projection).
+
+    Parameters
+    ----------
+    lf_df:
+        Country-level labour-force table after
+        :func:`compute_absolute_counts` (must contain the four main count
+        columns and ``lf_col``).
+    lf_col:
+        Column holding the labour-force denominator.
+
+    Returns
+    -------
+    DataFrame
+        Indexed by worker category with columns ``Workers`` (absolute count)
+        and ``% of Labour Force``.
+    """
+    global_lf = lf_df[lf_col].sum(skipna=True)
+    essential = lf_df["Essential Workers"].sum(skipna=True)
+    vital = lf_df["Vital Workers"].sum(skipna=True)
+    indoor_essential = lf_df["Indoor Essential Workers"].sum(skipna=True)
+    indoor_vital = lf_df["Indoor Vital Workers"].sum(skipna=True)
+    outdoor_essential = essential - indoor_essential
+    outdoor_vital = vital - indoor_vital
+
+    rows = {
+        "Essential workers": essential,
+        "Indoor essential workers": indoor_essential,
+        "Outdoor essential workers": outdoor_essential,
+        "Vital workers": vital,
+        "Indoor vital workers": indoor_vital,
+        "Outdoor vital workers": outdoor_vital,
+    }
+    summary = pd.DataFrame(
+        {
+            "Workers": rows,
+            "% of Labour Force": {k: 100 * v / global_lf for k, v in rows.items()},
+        }
+    )
+    summary.index.name = "Category"
+    summary.attrs["labour_force"] = global_lf
+    return summary
+
+
 # ---------------------------------------------------------------------------
 # Final result: regional aggregation
 # ---------------------------------------------------------------------------
@@ -849,6 +1552,8 @@ def validate_against_ilo(
     lf_df: pd.DataFrame,
     ilo_pct_df: pd.DataFrame,
     outlier_threshold_pp: float = 10.0,
+    essential_pct_col: str = "%Essential Workers",
+    our_pct_label: str = "Our %Essential (pct)",
 ) -> ValidationResult:
     """Compare our per-country %Essential to ILO's published figures.
 
@@ -869,10 +1574,8 @@ def validate_against_ilo(
     higher than the global 0.335 we use.
     """
     merged = lf_df.merge(ilo_pct_df, on="Country Name", how="inner")
-    merged["Our %Essential (pct)"] = merged["%Essential Workers"] * 100
-    merged["Delta (pp)"] = (
-        merged["Our %Essential (pct)"] - merged["ILO %essential (published)"]
-    )
+    merged[our_pct_label] = merged[essential_pct_col] * 100
+    merged["Delta (pp)"] = merged[our_pct_label] - merged["ILO %essential (published)"]
 
     global_lf = lf_df["Labour Force (2024)"].sum(skipna=True)
     global_essential = lf_df["Essential Workers"].sum(skipna=True)
@@ -891,11 +1594,11 @@ def validate_against_ilo(
         global_pct_vital=100 * global_vital / global_lf,
         global_pct_indoor_essential=100 * global_indoor_essential / global_lf,
         global_pct_indoor_vital=100 * global_indoor_vital / global_lf,
-        mean_our_pct_essential=float(merged["Our %Essential (pct)"].mean()),
+        mean_our_pct_essential=float(merged[our_pct_label].mean()),
         mean_ilo_pct_essential=float(merged["ILO %essential (published)"].mean()),
         mean_abs_delta_pp=float(merged["Delta (pp)"].abs().mean()),
         correlation=float(
-            merged["Our %Essential (pct)"].corr(merged["ILO %essential (published)"])
+            merged[our_pct_label].corr(merged["ILO %essential (published)"])
         ),
         outlier_df=outliers,
         outlier_threshold_pp=outlier_threshold_pp,
@@ -914,10 +1617,14 @@ class EssentialWorkerOutputs:
     weights_df: pd.DataFrame
     employment_by_iso: Dict[str, Dict[str, float]]
     workers: WorkerDicts
+    workers_model: WorkerDicts
     labour_force_df: pd.DataFrame
     regional_df: pd.DataFrame
+    onsite_housing_df: pd.DataFrame
     ilo_pct_df: pd.DataFrame
     validation: ValidationResult
+    validation_model: ValidationResult
+    overlap_calibration: OverlapCalibrationResult
 
 
 def run_pipeline(
@@ -940,8 +1647,14 @@ def run_pipeline(
         Where to write CSV outputs when ``write`` is ``True``.
     write:
         If ``True``, write ``EssentialWorkersByCountry.csv``,
-        ``EssentialWorkersByRegion.csv`` and ``Essential_Workers_Validation.csv``
-        to ``results_dir``.
+        ``EssentialWorkersByRegion.csv``, ``Essential_Workers_Validation.csv``,
+        ``Group_Overlap_Calibration.csv``, and
+        ``Onsite_Housing_Worker_Requirements.csv`` to ``results_dir``.
+
+    Per-country group overlaps are calibrated to ILO published %essential
+    (scalar ``x`` on global Figure A1 priors); vital workers use the same
+    calibrated overlaps. Validation CSV includes model (global overlap) and
+    calibrated series for the paper.
     soc_to_isco_aggregator:
         Passed through to :func:`build_isco_lvl2_weights`. Defaults to
         ``"mean"`` (corrected behaviour). Use ``"last"`` to reproduce the
@@ -956,23 +1669,67 @@ def run_pipeline(
     ilo_df = pd.read_csv(data_dir / "ILO_ISCO_08_GLB.csv")
     lf_raw = pd.read_excel(data_dir / "LFData_WB_plus.xlsx", usecols=[0, 1, 3])
 
-    weights = build_isco_lvl2_weights(
+    weights_template = _build_isco_lvl2_template(
         poll_df, onet_df, crosswalk_df, soc_to_isco_aggregator=soc_to_isco_aggregator
     )
+    weights = apply_group_overlaps(weights_template, GROUP_OVERLAP)
     employment_by_iso = build_employment_by_isco(ilo_df)
-    workers = compute_worker_dicts(employment_by_iso, weights)
+    ilo_pct_df = load_ilo_published_pct(
+        data_dir / "ILO_country_essential_workers_pct.xlsx"
+    )
+
+    workers_model = compute_worker_dicts(employment_by_iso, weights_template)
 
     lf_df = prepare_labour_force(lf_raw)
+    overlap_cal = calibrate_country_overlaps(
+        lf_df, employment_by_iso, ilo_pct_df, weights_template
+    )
+    workers = compute_worker_dicts(
+        employment_by_iso,
+        weights_template,
+        overlap_cal.overlaps_by_country,
+    )
+    overlap_cal.detail_df = build_group_overlap_calibration_detail(
+        lf_df,
+        overlap_cal.country_table,
+        employment_by_iso,
+        weights_template,
+        ilo_pct_df,
+        workers_model,
+        workers,
+    )
+
     lf_df = attach_pct_columns(lf_df, workers)
     lf_df = backfill_neighbours(lf_df)
+    lf_df = attach_onsite_excluded_pct(
+        lf_df,
+        employment_by_iso,
+        weights_template,
+        overlap_cal.overlaps_by_country,
+    )
+    lf_df = backfill_neighbours(
+        lf_df,
+        cols=[ONSITE_EXCLUDED_ESSENTIAL_PCT_COL, ONSITE_EXCLUDED_VITAL_PCT_COL],
+    )
     lf_df = compute_absolute_counts(lf_df)
 
     regional_df = aggregate_by_region(lf_df)
 
-    ilo_pct_df = load_ilo_published_pct(
-        data_dir / "ILO_country_essential_workers_pct.xlsx"
+    validation = validate_against_ilo(
+        lf_df,
+        ilo_pct_df,
+        our_pct_label="Our %Essential (calibrated)",
     )
-    validation = validate_against_ilo(lf_df, ilo_pct_df)
+    lf_model = attach_pct_columns(lf_df.copy(), workers_model)
+    validation_model = validate_against_ilo(
+        lf_model,
+        ilo_pct_df,
+        our_pct_label="Our %Essential (model, global overlap)",
+    )
+    validation_merged = build_dual_validation_merged(
+        lf_df, ilo_pct_df, workers_model, validation
+    )
+    onsite_housing_df = build_onsite_housing_worker_requirements(lf_df)
 
     if write:
         if results_dir is None:
@@ -987,22 +1744,38 @@ def run_pipeline(
             "Labour Force (2024)",
             "Essential Workers",
             "%Essential Workers",
-            "Our %Essential (pct)",
+            "Our %Essential (model, global overlap)",
+            "Our %Essential (calibrated)",
             "ILO %essential (published)",
             "ILO %essential non-agri (published)",
-            "Delta (pp)",
+            "Delta model (pp)",
+            "Delta calibrated (pp)",
             "Armed Forces (Essential)",
         ]
-        validation.merged_df[val_out_cols].to_csv(
-            results_dir / "Essential_Workers_Validation.csv", index=False
+        validation_merged[
+            [c for c in val_out_cols if c in validation_merged.columns]
+        ].to_csv(results_dir / "Essential_Workers_Validation.csv", index=False)
+        overlap_cal.detail_df.to_csv(
+            results_dir / "Group_Overlap_Calibration.csv", index=False
+        )
+        onsite_housing_df.to_csv(
+            results_dir / "Onsite_Housing_Worker_Requirements.csv", index=False
         )
 
     return EssentialWorkerOutputs(
         weights_df=weights,
         employment_by_iso=employment_by_iso,
         workers=workers,
+        workers_model=workers_model,
         labour_force_df=lf_df,
         regional_df=regional_df,
+        onsite_housing_df=onsite_housing_df,
         ilo_pct_df=ilo_pct_df,
         validation=validation,
+        validation_model=validation_model,
+        overlap_calibration=overlap_cal,
     )
+
+
+if __name__ == "__main__":
+    run_pipeline(Path("data"), Path("results"), write=True)
