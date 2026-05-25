@@ -21,20 +21,105 @@ import essential_workers as ew
 
 
 # ---------------------------------------------------------------------------
+# Indoor context
+# ---------------------------------------------------------------------------
+
+
+def test_onet_max_takes_higher_context():
+    controlled = pd.DataFrame(
+        {"Code": ["11-1111.00", "22-2222.00"], "Context": [50.0, 80.0]}
+    )
+    not_controlled = pd.DataFrame(
+        {"Code": ["11-1111.00", "22-2222.00"], "Context": [90.0, 40.0]}
+    )
+    merged = ew._merge_onet_max_context(controlled, not_controlled)
+    assert merged.loc[merged["Code"] == "11-1111", "context_pct"].iloc[0] == 90.0
+    assert merged.loc[merged["Code"] == "22-2222", "context_pct"].iloc[0] == 80.0
+
+
+def test_onet_banded_thresholds():
+    assert ew._pct_to_indoor_fraction(80, "onet_banded") == 1.0
+    assert ew._pct_to_indoor_fraction(60, "onet_banded") == 0.5
+    assert ew._pct_to_indoor_fraction(40, "onet_banded") == 0.0
+    assert ew._pct_to_indoor_fraction(80, "onet_max") == pytest.approx(0.8)
+
+
+def test_jem_location_buckets():
+    assert ew._location_to_indoor_fraction(2.9) == 1.0
+    assert ew._location_to_indoor_fraction(2.1) == 0.5
+    assert ew._location_to_indoor_fraction(1.0) == 0.0
+    assert ew._location_to_indoor_fraction(0.2) == 0.0
+
+
+def test_indoor_method_does_not_change_total_weights(data_dir):
+    w_max = _weights(data_dir, indoor_context_method="onet_max")
+    w_band = _weights(data_dir, indoor_context_method="onet_banded")
+    pd.testing.assert_series_equal(
+        w_max["ISCO_08_PollWeights_Total"],
+        w_band["ISCO_08_PollWeights_Total"],
+        check_names=False,
+    )
+    pd.testing.assert_series_equal(
+        w_max["ISCO_08_ILOWeights_Total"],
+        w_band["ISCO_08_ILOWeights_Total"],
+        check_names=False,
+    )
+
+
+@pytest.mark.full_data
+def test_jem_load_produces_l2_indoors_context(data_dir):
+    poll = pd.read_excel(data_dir / "ISCO-08 OpinionPollCensus.xlsx", engine="openpyxl")
+    cw = pd.read_csv(data_dir / "ISCO_SOC_Crosswalk.csv")
+    w = ew.build_isco_lvl2_weights(
+        poll,
+        cw,
+        indoor_context_method="jem_location",
+        jem_path=data_dir / "job_exposure_matrix.xls",
+    )
+    assert ew.INDOORS_CONTEXT_COLUMN in w.columns
+    assert w[ew.INDOORS_CONTEXT_COLUMN].between(0, 1).all()
+
+
+@pytest.mark.full_data
+def test_compare_indoor_context_methods_returns_three_rows(data_dir):
+    out = ew.compare_indoor_context_methods(data_dir)
+    assert set(out["indoor_context_method"]) == {
+        "onet_max",
+        "onet_banded",
+        "jem_location",
+    }
+    assert len(out) == 3 * 6
+
+
+# ---------------------------------------------------------------------------
 # Weight builder
 # ---------------------------------------------------------------------------
 
 
-def _weights(data_dir: Path, aggregator: str = "mean") -> pd.DataFrame:
+def _weights(
+    data_dir: Path,
+    aggregator: str = "mean",
+    indoor_context_method: ew.IndoorContextMethod = "onet_max",
+) -> pd.DataFrame:
     poll = pd.read_excel(data_dir / "ISCO-08 OpinionPollCensus.xlsx", engine="openpyxl")
-    onet = pd.read_csv(data_dir / "Indoors_Environmentally_Controlled_data.csv")
+    onet_env = pd.read_csv(data_dir / "Indoors_Environmentally_Controlled_data.csv")
+    onet_not = pd.read_csv(data_dir / "Indoors_Not_Environmentally_Controlled.csv")
     cw = pd.read_csv(data_dir / "ISCO_SOC_Crosswalk.csv")
-    return ew.build_isco_lvl2_weights(poll, onet, cw, soc_to_isco_aggregator=aggregator)
+    jem = data_dir / "job_exposure_matrix.xls"
+    return ew.build_isco_lvl2_weights(
+        poll,
+        cw,
+        onet_controlled_df=onet_env,
+        onet_not_controlled_df=onet_not,
+        indoor_context_method=indoor_context_method,
+        jem_path=jem if jem.exists() else None,
+        soc_to_isco_aggregator=aggregator,
+    )
 
 
 def test_subsistence_farmers_have_zero_indoor_context(data_dir):
     w = _weights(data_dir)
-    assert w.at["63", "Context Proj"] == 0
+    assert w.at["63", ew.INDOORS_CONTEXT_COLUMN] == 0
 
 
 def test_farming_carry_over_61_equals_62(data_dir):
@@ -42,7 +127,7 @@ def test_farming_carry_over_61_equals_62(data_dir):
     # Code 61 should pick up code 62's Census/Context (the L4 inputs for 61
     # are missing in the ONET data, so the carry-over fills the gap).
     assert w.at["61", "Vital Weight POLL"] == w.at["62", "Vital Weight POLL"]
-    assert w.at["61", "Context Proj"] == w.at["62", "Context Proj"]
+    assert w.at["61", ew.INDOORS_CONTEXT_COLUMN] == w.at["62", ew.INDOORS_CONTEXT_COLUMN]
 
 
 def test_non_ilo_poll_codes_have_zero_vital_poll(data_dir):
@@ -69,9 +154,9 @@ def test_essential_weight_ilo_is_binary(data_dir):
 
 
 def test_aggregator_choice_affects_indoor_only(data_dir):
-    """Switching SOC->ISCO aggregator changes Context Proj but not totals.
+    """Switching SOC->ISCO aggregator changes indoors_context but not totals.
 
-    ``ISCO_08_*Weights_Total`` are independent of Context Proj, so they
+    ``ISCO_08_*Weights_Total`` are independent of indoors_context, so they
     should be identical across "mean" and "last" aggregations.
     """
     w_mean = _weights(data_dir, "mean")
@@ -86,17 +171,22 @@ def test_aggregator_choice_affects_indoor_only(data_dir):
         w_last["ISCO_08_ILOWeights_Total"],
         check_names=False,
     )
-    # And Context Proj must differ for at least one code (otherwise the
-    # flag is doing nothing).
-    assert not w_mean["Context Proj"].equals(w_last["Context Proj"])
+    assert not w_mean[ew.INDOORS_CONTEXT_COLUMN].equals(w_last[ew.INDOORS_CONTEXT_COLUMN])
 
 
 def test_invalid_aggregator_raises(data_dir):
     poll = pd.read_excel(data_dir / "ISCO-08 OpinionPollCensus.xlsx", engine="openpyxl")
-    onet = pd.read_csv(data_dir / "Indoors_Environmentally_Controlled_data.csv")
+    onet_env = pd.read_csv(data_dir / "Indoors_Environmentally_Controlled_data.csv")
+    onet_not = pd.read_csv(data_dir / "Indoors_Not_Environmentally_Controlled.csv")
     cw = pd.read_csv(data_dir / "ISCO_SOC_Crosswalk.csv")
     with pytest.raises(ValueError):
-        ew.build_isco_lvl2_weights(poll, onet, cw, soc_to_isco_aggregator="bogus")
+        ew.build_isco_lvl2_weights(
+            poll,
+            cw,
+            onet_controlled_df=onet_env,
+            onet_not_controlled_df=onet_not,
+            soc_to_isco_aggregator="bogus",
+        )
 
 
 # ---------------------------------------------------------------------------

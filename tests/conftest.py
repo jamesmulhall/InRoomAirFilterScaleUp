@@ -12,10 +12,13 @@ from pathlib import Path
 
 import pytest
 
+from paths import ESSENTIAL_WORKERS_DATA, SCALE_UP_DATA
+
 
 REPO_ROOT = Path(__file__).resolve().parents[1]
-REAL_DATA = REPO_ROOT / "data"
 FIXTURES = Path(__file__).resolve().parent / "fixtures"
+FIXTURES_EW = FIXTURES / "essential_workers"
+FIXTURES_SCALE_UP = FIXTURES / "scale_up"
 
 
 def pytest_addoption(parser):
@@ -54,25 +57,44 @@ def use_full_data(request) -> bool:
 
 @pytest.fixture(scope="session")
 def data_dir(use_full_data) -> Path:
-    return REAL_DATA if use_full_data else FIXTURES
+    """Essential-worker pipeline inputs."""
+    return ESSENTIAL_WORKERS_DATA if use_full_data else FIXTURES_EW
 
 
 @pytest.fixture(scope="session")
-def results_dir(tmp_path_factory) -> Path:
-    return tmp_path_factory.mktemp("results")
+def scale_up_data_dir(use_full_data) -> Path:
+    """Scale-up pipeline inputs (country list, CR box, baghouse)."""
+    return SCALE_UP_DATA if use_full_data else FIXTURES_SCALE_UP
 
 
 @pytest.fixture(scope="session")
-def ew_outputs(data_dir, results_dir):
+def ew_results_dir(tmp_path_factory) -> Path:
+    out = tmp_path_factory.mktemp("ew_results")
+    out.mkdir(parents=True, exist_ok=True)
+    return out
+
+
+@pytest.fixture(scope="session")
+def results_dir(ew_results_dir) -> Path:
+    """Alias used by essential-worker validation tests."""
+    return ew_results_dir
+
+
+@pytest.fixture(scope="session")
+def ew_outputs(data_dir, ew_results_dir):
     """Run the essential-worker pipeline once and share the result."""
     from essential_workers import run_pipeline
 
-    return run_pipeline(data_dir=data_dir, results_dir=results_dir, write=True)
+    return run_pipeline(data_dir=data_dir, results_dir=ew_results_dir, write=True)
 
 
 @pytest.fixture(scope="session")
-def countries_outputs(data_dir, results_dir, ew_outputs):  # noqa: ARG001
+def countries_outputs(scale_up_data_dir, ew_outputs, ew_results_dir):  # noqa: ARG001
     """Run the countries pipeline once (depends on EW outputs being on disk)."""
     from countries import run_pipeline
 
-    return run_pipeline(data_dir=data_dir, results_dir=results_dir, write=False)
+    return run_pipeline(
+        data_dir=scale_up_data_dir,
+        essential_workers_csv=ew_results_dir / "EssentialWorkersByCountry.csv",
+        write=False,
+    )

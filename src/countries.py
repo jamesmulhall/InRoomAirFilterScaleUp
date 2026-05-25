@@ -15,6 +15,8 @@ from __future__ import annotations
 
 import math
 from dataclasses import dataclass, field
+
+from paths import ESSENTIAL_WORKERS_RESULTS, SCALE_UP_DATA, SCALE_UP_RESULTS
 from pathlib import Path
 from typing import Any, Dict, List, Optional, Tuple
 
@@ -704,8 +706,8 @@ def _tables_to_df(
 
 
 def run_pipeline(
-    data_dir: Path,
-    results_dir: Path,
+    data_dir: Optional[Path] = None,
+    results_dir: Optional[Path] = None,
     essential_workers_csv: Optional[Path] = None,
     weeks: int = 52,
     ttr_weeks: int = 52 * 5,
@@ -731,9 +733,11 @@ def run_pipeline(
     write:
         If True, write all CSV/PKL outputs back into ``results_dir``.
     """
-    data_dir = Path(data_dir)
-    results_dir = Path(results_dir)
-    ew_csv = essential_workers_csv or (results_dir / "EssentialWorkersByCountry.csv")
+    data_dir = Path(data_dir) if data_dir is not None else SCALE_UP_DATA
+    results_dir = Path(results_dir) if results_dir is not None else SCALE_UP_RESULTS
+    ew_csv = essential_workers_csv or (
+        ESSENTIAL_WORKERS_RESULTS / "EssentialWorkersByCountry.csv"
+    )
 
     countries = generate_countries_from_multiple_csvs(
         data_dir / "STANDARD_COUNTRY_LIST.csv",

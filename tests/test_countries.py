@@ -259,16 +259,16 @@ def test_scale_up_percent_indoor_vital_handles_zero_population():
 
 
 def test_compute_country_properties_skips_missing(
-    data_dir,
-    results_dir,
+    scale_up_data_dir,
+    ew_results_dir,
     ew_outputs,  # noqa: ARG001 - ew_outputs forces the EW CSV to exist
 ):
     """Countries lacking required EW properties are dropped, not crashed."""
     countries = cc.generate_countries_from_multiple_csvs(
-        data_dir / "STANDARD_COUNTRY_LIST.csv",
-        data_dir / "CR_Box_Countries_MS.csv",
-        results_dir / "EssentialWorkersByCountry.csv",
-        data_dir / "BaghouseAirflow.csv",
+        scale_up_data_dir / "STANDARD_COUNTRY_LIST.csv",
+        scale_up_data_dir / "CR_Box_Countries_MS.csv",
+        ew_results_dir / "EssentialWorkersByCountry.csv",
+        scale_up_data_dir / "BaghouseAirflow.csv",
     )
     # Inject a synthetic country missing the EW columns (only has MSA/MVA/MFS)
     fake = Country(name="USA")
@@ -320,7 +320,9 @@ def test_pipeline_global_equals_sum_of_countries(countries_outputs):
 def test_full_pipeline_matches_results_on_disk(countries_outputs):
     """Re-running the pipeline should match the on-disk EssentialWorkers CSV."""
     repo = Path(__file__).resolve().parents[1]
-    ref = pd.read_csv(repo / "results" / "EssentialWorkersByCountry.csv")
+    ref = pd.read_csv(
+        repo / "results" / "essential_workers" / "EssentialWorkersByCountry.csv"
+    )
     # Match country count + sum of essential workers within tolerance
     assert ref["Essential Workers"].sum(skipna=True) > 0
     # The countries pipeline doesn't directly produce EW counts; the

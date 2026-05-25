@@ -79,59 +79,21 @@ from __future__ import annotations
 
 from dataclasses import dataclass, field
 from pathlib import Path
-from typing import Any, Dict, Iterable, Optional
+from typing import Any, Dict, Iterable, Literal, Optional
 
 import numpy as np
 import pandas as pd
 
-try:
-    import country_converter as coco
-except ImportError as exc:  # pragma: no cover - required runtime dep
-    raise ImportError(
-        "country_converter is required for the essential_workers module. "
-        "Install it via `pip install country_converter` or use the conda env."
-    ) from exc
-
+from paths import ESSENTIAL_WORKERS_DATA, ESSENTIAL_WORKERS_RESULTS
 
 # ---------------------------------------------------------------------------
-# Constants
+# Constants (domain / ISCO weights — used by preprocessing via lazy import)
 # ---------------------------------------------------------------------------
 
-UN_REGIONS = [
-    "Australia and New Zealand",
-    "Caribbean",
-    "Central America",
-    "Central Asia",
-    "Eastern Africa",
-    "Eastern Asia",
-    "Eastern Europe",
-    "Melanesia",
-    "Micronesia",
-    "Middle Africa",
-    "Northern Africa",
-    "Northern America",
-    "Northern Europe",
-    "Polynesia",
-    "South America",
-    "South-eastern Asia",
-    "Southern Africa",
-    "Southern Asia",
-    "Southern Europe",
-    "Western Africa",
-    "Western Asia",
-    "Western Europe",
-]
+IndoorContextMethod = Literal["onet_max", "onet_banded", "jem_location"]
+INDOORS_CONTEXT_COLUMN = "indoors_context"
 
-# ISCO-08 level-2 codes the ILO classes as a key (essential) occupation in
-# Table A2 of WESO 2023 ("The value of essential work"). The list is the
-# union of the 8 ILO occupational groups plus the 3 Armed Forces codes
-# (01/02/03). Any L2 code NOT in this list automatically receives an
-# Essential Weight ILO of 0 (and therefore contributes zero to the
-# essential-worker totals).
-#
-# NOTE: this is only the OCCUPATION axis of the ILO definition. The
-# industry (ISIC) axis is applied separately below via ``GROUP_OVERLAP``;
-# see the module docstring for the full methodology.
+# ISCO-08 level-2 codes the ILO classes as essential (WESO 2023 Table A2).
 ILO_LVL2_ESSENTIAL_GROUPS = [
     61,
     62,
@@ -163,10 +125,6 @@ ILO_LVL2_ESSENTIAL_GROUPS = [
     3,
 ]
 
-# Map of ISCO-08 level-2 codes to the 8 ILO occupational groups + Armed
-# Forces (Figure A1 of WESO 2023). The grouping matters because the
-# ISCO × ISIC overlap is reported at the group level rather than at the
-# L2 code level - we apply ``GROUP_OVERLAP[group]`` per group below.
 ISCO_L2_TO_GROUP: Dict[str, str] = {
     "61": "Food",
     "62": "Food",
@@ -197,6 +155,51 @@ ISCO_L2_TO_GROUP: Dict[str, str] = {
     "02": "ArmedForces",
     "03": "ArmedForces",
 }
+
+NON_ILO_POLL_CODES = ["13", "21", "33", "35"]
+OVERRIDES_INDOOR_L4 = ["0110", "0210", "0310"]
+
+from preprocessing import (
+    build_employment_by_isco,
+    build_isco_lvl2_template,
+    build_isco_lvl2_template as _build_isco_lvl2_template,
+    employment_for_country,
+    load_ilo_published_pct,
+    location_to_indoor_fraction as _location_to_indoor_fraction,
+    merge_onet_max_context as _merge_onet_max_context,
+    pct_to_indoor_fraction as _pct_to_indoor_fraction,
+    prepare_labour_force,
+)
+
+
+# ---------------------------------------------------------------------------
+# Pipeline constants
+# ---------------------------------------------------------------------------
+
+UN_REGIONS = [
+    "Australia and New Zealand",
+    "Caribbean",
+    "Central America",
+    "Central Asia",
+    "Eastern Africa",
+    "Eastern Asia",
+    "Eastern Europe",
+    "Melanesia",
+    "Micronesia",
+    "Middle Africa",
+    "Northern Africa",
+    "Northern America",
+    "Northern Europe",
+    "Polynesia",
+    "South America",
+    "South-eastern Asia",
+    "Southern Africa",
+    "Southern Asia",
+    "Southern Europe",
+    "Western Africa",
+    "Western Asia",
+    "Western Europe",
+]
 
 # Per-group ISIC × ISCO overlap factors derived from ILO WESO 2023
 # Figure A1 (Annex). For each occupational group g, ``GROUP_OVERLAP[g]``
@@ -262,14 +265,6 @@ ESSENTIAL_PCT_TOLERANCE_PP = 0.01
 # ``ILO_ISCO_08_GLB.csv`` (country_converter short names).
 EMPLOYMENT_COUNTRY_ALIASES: Dict[str, str] = {}
 
-# ISCO-08 level-2 codes that the team's in-house poll classified as
-# "vital" but that ILO Table A2 explicitly excludes from key occupations
-# on teleworkability grounds (e.g. 13 = ICT professionals, 21 = Science
-# and engineering, 33 = Business and administration associates, 35 =
-# ICT technicians). We zero out their poll vital weight so the Vital
-# series stays aligned with the ILO's non-teleworkable scope.
-NON_ILO_POLL_CODES = ["13", "21", "33", "35"]
-
 # Armed-forces ISCO-08 level-2 codes used for diagnostic sub-totals.
 ARMED_FORCES_L2 = ("01", "02", "03")
 
@@ -288,11 +283,6 @@ SUBSISTENCE_FARMERS_ISCO_L2 = "63"
 # a future pandemic.
 
 ONSITE_HOUSING_EXCLUDED_ISCO_L2 = ("61", "63")
-
-# Manual indoor-context overrides for the level-4 codes which would otherwise
-# be missing context data (commissioned officer roles).
-OVERRIDES_INDOOR_L4 = ["0110", "0210", "0310"]
-
 
 # Per-country neighbour map used to back-fill missing labour-force breakdowns
 # via the average of nearby / similar-economy countries. Sourced from the
@@ -404,36 +394,6 @@ SIMILAR_ISO3: Dict[str, list] = {
 }
 
 
-# Shared country converter instance
-_CC = coco.CountryConverter()
-
-
-# ---------------------------------------------------------------------------
-# Helpers
-# ---------------------------------------------------------------------------
-
-
-def _normalise_country_keys(d: Dict[str, Any]) -> Dict[str, Any]:
-    """Standardise the top-level country keys of a nested dict."""
-    return {
-        _CC.convert(names=k, to="name_short", not_found="not found"): v
-        for k, v in d.items()
-    }
-
-
-def employment_for_country(
-    country: str,
-    employment_by_iso: Dict[str, Dict[str, float]],
-) -> Optional[Dict[str, float]]:
-    """Look up ILO ISCO employment for a labour-force country name."""
-    if country in employment_by_iso:
-        return employment_by_iso[country]
-    alias = EMPLOYMENT_COUNTRY_ALIASES.get(country)
-    if alias and alias in employment_by_iso:
-        return employment_by_iso[alias]
-    return None
-
-
 def overlap_calibration_feasible(
     overlap_country_df: pd.DataFrame,
 ) -> pd.Series:
@@ -441,154 +401,25 @@ def overlap_calibration_feasible(
     return overlap_country_df["solver_status"].isin(("ok", "exact_at_baseline"))
 
 
-# ---------------------------------------------------------------------------
-# 1. ISCO-08 level-2 weights
-# ---------------------------------------------------------------------------
-
-
-def _build_isco_lvl2_template(
-    poll_df: pd.DataFrame,
-    onet_df: pd.DataFrame,
-    crosswalk_df: pd.DataFrame,
-    soc_to_isco_aggregator: str = "mean",
-) -> pd.DataFrame:
-    """ISCO L2 table before group overlaps (poll, context, essential flags, group).
-
-    Returns
-    -------
-    DataFrame
-        Indexed by 2-digit ISCO-08 code (zero-padded string) with columns:
-
-        ``Vital Weight POLL``
-            Per-ISCO-L2 share of jobs the in-house poll classified as
-            vital (averaged over L4 codes within the L2). Codes in
-            :data:`NON_ILO_POLL_CODES` are forced to 0.
-        ``Context Proj``
-            Per-ISCO-L2 indoor-context fraction (0..1), averaged from
-            the ONET indoor-environment data after the SOC -> ISCO L4
-            crosswalk + L4 -> L2 collapse. Missing entries are filled
-            from the next-coarsest ISCO ancestor (L3 -> L2 -> L1).
-        ``Essential Weight ILO``
-            Binary 1/0 - whether the L2 code appears in
-            :data:`ILO_LVL2_ESSENTIAL_GROUPS` (ILO Table A2, occupation
-            axis only - NOT the full ISCO ∩ ISIC intersection).
-        ``Group`` / ``Group Overlap``
-            ILO Figure A1 group assignment + its per-group ISIC × ISCO
-            overlap factor from :data:`GROUP_OVERLAP`. ``Group Overlap``
-            is the key per-country simplification - see the module
-            docstring for caveats.
-        ``ISCO_08_PollWeights``     = Vital × Context Proj × Group Overlap
-        ``ISCO_08_PollWeights_Total`` = Vital × Group Overlap
-        ``ISCO_08_ILOWeights``      = Essential × Context Proj × Group Overlap
-        ``ISCO_08_ILOWeights_Total``  = Essential × Group Overlap
-
-        The ``_Total`` columns drop the indoor filter and are used for
-        the totals (Vital, Essential); the non-``_Total`` columns include
-        Context Proj and feed Indoor Vital / Indoor Essential.
-    """
-    if soc_to_isco_aggregator not in ("mean", "last"):
-        raise ValueError(
-            f"soc_to_isco_aggregator must be 'mean' or 'last', got "
-            f"{soc_to_isco_aggregator!r}"
-        )
-    # 1.1 Poll: keep just ISCO-08 (zero-padded L4) and Census
-    poll = poll_df[["ISCO-08", "Census"]].copy()
-    poll["ISCO-08"] = poll["ISCO-08"].astype(str).str.zfill(4)
-    poll = poll.set_index("ISCO-08")
-
-    # 1.2 ONET: normalise SOC codes and convert percent to fraction
-    onet = onet_df[["Context", "Code"]].copy()
-    onet["Code"] = onet["Code"].astype(str).str.split(".").str[0]
-    onet["Context"] = onet["Context"] / 100
-    onet_dict = onet.set_index("Code")["Context"].to_dict()
-
-    # 1.3 SOC -> ISCO-08 crosswalk
-    cw = crosswalk_df[["2010 SOC Code", "ISCO-08 Code"]].copy()
-    cw["ISCO-08 Code"] = cw["ISCO-08 Code"].astype(str)
-    soc_to_isco = cw.set_index("2010 SOC Code")["ISCO-08 Code"].to_dict()
-
-    # Map ONET context onto ISCO-08 (L4) using the SOC-ISCO crosswalk. 43%
-    # of touched ISCO codes are fed by multiple SOC codes; how to aggregate
-    # them is controlled by ``soc_to_isco_aggregator``.
-    isco_context_pool: Dict[str, list] = {}
-    for k, v in onet_dict.items():
-        if k in soc_to_isco:
-            isco_context_pool.setdefault(soc_to_isco[k], []).append(v)
-
-    if soc_to_isco_aggregator == "mean":
-        isco_context_indoor = {
-            k: float(np.mean(v)) for k, v in isco_context_pool.items()
-        }
-    else:  # "last"
-        isco_context_indoor = {k: v[-1] for k, v in isco_context_pool.items()}
-
-    isco_ctx_df = pd.DataFrame.from_dict(
-        isco_context_indoor, orient="index", columns=["Context"]
-    )
-    isco_ctx_df.index.name = "ISCO-08 Code"
-
-    # 1.4 Merge poll and ONET indoor context, then fill the missing entries
-    # with the mean of the next-larger ISCO group (L3 -> L2 -> L1 -> global).
-    left = poll.copy()
-    right = isco_ctx_df.copy()
-    left.index = left.index.astype(str).str.zfill(4)
-    right.index = right.index.astype(str).str.zfill(4)
-
-    df = pd.merge(left, right, left_index=True, right_index=True, how="left")
-    df["Context"] = pd.to_numeric(df.get("Context"), errors="coerce")
-    df["Census"] = pd.to_numeric(df.get("Census"), errors="coerce")
-
-    df["_L3"] = df.index.str[:3]
-    df["_L2"] = df.index.str[:2]
-    df["_L1"] = df.index.str[:1]
-    mean_l3 = df.groupby("_L3")["Context"].transform("mean")
-    mean_l2 = df.groupby("_L2")["Context"].transform("mean")
-    mean_l1 = df.groupby("_L1")["Context"].transform("mean")
-
-    df["Context Proj"] = df["Context"].fillna(mean_l3).fillna(mean_l2).fillna(mean_l1)
-    overrides_present = [c for c in OVERRIDES_INDOOR_L4 if c in df.index]
-    df.loc[overrides_present, "Context Proj"] = 1
-    df = df.drop(columns=["_L3", "_L2", "_L1", "Context"])
-
-    # Collapse to level 2 by averaging both Census (poll) and Context Proj.
-    lvl2 = (
-        df.assign(_l2=df.index.str[:2])
-        .groupby("_l2")
-        .agg({"Census": "mean", "Context Proj": "mean"})
-        .rename_axis("ISCO-08")
-        .rename(columns={"Census": "Vital Weight POLL"})
-    )
-
-    # Essential weight from ILO Table A2 (binary 1/0).
-    lvl2["Essential Weight ILO"] = (
-        lvl2.index.astype(int).isin(ILO_LVL2_ESSENTIAL_GROUPS).astype(int)
-    )
-
-    # Farming carry-over: copy 62 onto 61 (Indoor/Outdoor context is missing
-    # for code 61), then force subsistence farmers (63) to 100% outdoor.
-    if "62" in lvl2.index:
-        lvl2.loc["61"] = lvl2.loc["62"]
-    if "63" in lvl2.index:
-        lvl2.at["63", "Context Proj"] = 0
-
-    # Suppress poll-vital codes the ILO methodology marks as teleworkable.
-    for code in NON_ILO_POLL_CODES:
-        if code in lvl2.index:
-            lvl2.at[code, "Vital Weight POLL"] = 0
-
-    lvl2["Group"] = lvl2.index.map(ISCO_L2_TO_GROUP)
-    return lvl2
-
-
 def build_isco_lvl2_weights(
     poll_df: pd.DataFrame,
-    onet_df: pd.DataFrame,
     crosswalk_df: pd.DataFrame,
+    onet_controlled_df: Optional[pd.DataFrame] = None,
+    onet_not_controlled_df: Optional[pd.DataFrame] = None,
+    *,
+    indoor_context_method: IndoorContextMethod = "onet_max",
+    jem_path: Optional[Path] = None,
     soc_to_isco_aggregator: str = "mean",
 ) -> pd.DataFrame:
     """Build ``ISCO_LVL2_WEIGHTS`` with global :data:`GROUP_OVERLAP`."""
-    template = _build_isco_lvl2_template(
-        poll_df, onet_df, crosswalk_df, soc_to_isco_aggregator
+    template = build_isco_lvl2_template(
+        poll_df,
+        crosswalk_df,
+        onet_controlled_df=onet_controlled_df,
+        onet_not_controlled_df=onet_not_controlled_df,
+        indoor_context_method=indoor_context_method,
+        jem_path=jem_path,
+        soc_to_isco_aggregator=soc_to_isco_aggregator,
     )
     return apply_group_overlaps(template, GROUP_OVERLAP)
 
@@ -604,10 +435,12 @@ def apply_group_overlaps(
     lvl2["Group Overlap"] = lvl2["Group"].map(overlaps).fillna(0.0)
 
     lvl2["ISCO_08_PollWeights"] = (
-        lvl2["Vital Weight POLL"] * lvl2["Context Proj"] * lvl2["Group Overlap"]
+        lvl2["Vital Weight POLL"] * lvl2[INDOORS_CONTEXT_COLUMN] * lvl2["Group Overlap"]
     )
     lvl2["ISCO_08_ILOWeights"] = (
-        lvl2["Essential Weight ILO"] * lvl2["Context Proj"] * lvl2["Group Overlap"]
+        lvl2["Essential Weight ILO"]
+        * lvl2[INDOORS_CONTEXT_COLUMN]
+        * lvl2["Group Overlap"]
     )
     lvl2["ISCO_08_PollWeights_Total"] = (
         lvl2["Vital Weight POLL"] * lvl2["Group Overlap"]
@@ -619,42 +452,7 @@ def apply_group_overlaps(
 
 
 # ---------------------------------------------------------------------------
-# 2. Employment by ISCO-08
-# ---------------------------------------------------------------------------
-
-
-def build_employment_by_isco(ilo_df: pd.DataFrame) -> Dict[str, Dict[str, float]]:
-    """Reduce the wide ILO ISCO-08 L2 employment CSV to ``{country: {code: employment}}``.
-
-    For each (country, ISCO code) pair the latest year with a non-NaN value
-    is kept. Country names are normalised via ``country_converter``.
-    """
-    df = ilo_df.copy()
-    df["ISCO-8 L2 Code"] = df["classif1.label"].str.split(":").str[1].str[1:4]
-    df["Employment"] = df["obs_value"] * 1000
-    df = df.rename(columns={"ref_area.label": "Country"})[
-        ["Country", "ISCO-8 L2 Code", "Employment", "time"]
-    ]
-
-    nested: Dict[str, Dict[str, Dict[Any, float]]] = {}
-    for _, row in df.iterrows():
-        nested.setdefault(row["Country"], {}).setdefault(row["ISCO-8 L2 Code"], {})[
-            row["time"]
-        ] = row["Employment"]
-
-    nested = _normalise_country_keys(nested)
-
-    for country, code_dict in nested.items():
-        for code, year_dict in list(code_dict.items()):
-            if isinstance(year_dict, dict) and year_dict:
-                valid = {y: v for y, v in year_dict.items() if pd.notna(v)}
-                code_dict[code] = valid[max(valid)] if valid else None
-
-    return nested  # type: ignore[return-value]
-
-
-# ---------------------------------------------------------------------------
-# 2b. Per-country group overlap calibration (ILO baseline)
+# Per-country group overlap calibration (ILO baseline)
 # ---------------------------------------------------------------------------
 
 
@@ -823,7 +621,9 @@ def build_overlap_country_table(
         row["solver_status"] = ""
         row["overlap_source"] = ""
 
-        emp = employment_for_country(country, employment_by_iso)
+        emp = employment_for_country(
+            country, employment_by_iso, EMPLOYMENT_COUNTRY_ALIASES
+        )
         ilo_pct = ilo_lookup.get(country)
         if emp and ilo_pct is not None and pd.notna(ilo_pct):
             tot = emp.get("Tot")
@@ -945,7 +745,9 @@ def build_group_overlap_calibration_detail(
     records = []
     for _, orow in overlap_country_df.iterrows():
         country = orow["Country Name"]
-        emp = employment_for_country(country, employment_by_iso) or {}
+        emp = employment_for_country(
+            country, employment_by_iso, EMPLOYMENT_COUNTRY_ALIASES
+        ) or {}
         masses = essential_mass_by_group(emp, weights_template) if emp else {}
         model_pct = workers_model.ew_pc.get(country)
         cal_pct = workers_calibrated.ew_pc.get(country)
@@ -1338,16 +1140,6 @@ ONSITE_HOUSING_WORKER_COUNT_COLUMNS: tuple[str, ...] = (
 )
 
 
-def prepare_labour_force(lf_df: pd.DataFrame) -> pd.DataFrame:
-    """Normalise the WB labour-force dataframe and attach UN regions."""
-    df = lf_df.copy()
-    df["Country Name"] = _CC.convert(
-        df["Country Name"], to="short_name", not_found="not found"
-    )
-    df["Region"] = _CC.convert(df["Country Name"], to="UNregion", not_found="not found")
-    return df
-
-
 def attach_pct_columns(lf_df: pd.DataFrame, workers: WorkerDicts) -> pd.DataFrame:
     """Attach the six per-country percentage columns from a ``WorkerDicts``."""
     df = lf_df.copy()
@@ -1518,36 +1310,6 @@ class ValidationResult:
     outlier_threshold_pp: float = 10.0
 
 
-def load_ilo_published_pct(path: Path) -> pd.DataFrame:
-    """Read and standardise the ILO 2023 per-country %essential xlsx."""
-    df = pd.read_excel(path, sheet_name="Sheet1", header=1, engine="openpyxl")
-    df = df.rename(
-        columns={
-            "cname": "Country Name",
-            "Share of key workers": "ILO %essential (published)",
-            "Same share without agriculture": "ILO %essential non-agri (published)",
-        }
-    )
-    df = df[
-        [
-            "Country Name",
-            "ILO %essential (published)",
-            "ILO %essential non-agri (published)",
-        ]
-    ]
-    df = df[df["Country Name"].notna() & (df["Country Name"] != "Average")].copy()
-    df["Country Name"] = _CC.convert(
-        df["Country Name"].tolist(), to="name_short", not_found="not found"
-    )
-    df["ILO %essential (published)"] = pd.to_numeric(
-        df["ILO %essential (published)"], errors="coerce"
-    )
-    df["ILO %essential non-agri (published)"] = pd.to_numeric(
-        df["ILO %essential non-agri (published)"], errors="coerce"
-    )
-    return df
-
-
 def validate_against_ilo(
     lf_df: pd.DataFrame,
     ilo_pct_df: pd.DataFrame,
@@ -1627,11 +1389,36 @@ class EssentialWorkerOutputs:
     overlap_calibration: OverlapCalibrationResult
 
 
+def compare_indoor_context_methods(
+    data_dir: Path,
+    methods: tuple[IndoorContextMethod, ...] = (
+        "onet_max",
+        "onet_banded",
+        "jem_location",
+    ),
+) -> pd.DataFrame:
+    """Run the pipeline under each indoor-context rule; return global summary rows."""
+    rows = []
+    for method in methods:
+        out = run_pipeline(
+            data_dir,
+            write=False,
+            indoor_context_method=method,
+        )
+        summary = compute_global_worker_summary(out.labour_force_df)
+        row = summary.reset_index().rename(columns={"index": "Category"})
+        row["indoor_context_method"] = method
+        rows.append(row)
+    return pd.concat(rows, ignore_index=True)
+
+
 def run_pipeline(
     data_dir: Path,
     results_dir: Optional[Path] = None,
     write: bool = False,
     soc_to_isco_aggregator: str = "mean",
+    indoor_context_method: IndoorContextMethod = "onet_max",
+    write_indoor_sensitivity: bool = False,
 ) -> EssentialWorkerOutputs:
     """Run the full essential-worker pipeline end-to-end.
 
@@ -1641,8 +1428,10 @@ def run_pipeline(
         Directory containing the five source files described in the README
         (``ISCO-08 OpinionPollCensus.xlsx``,
         ``Indoors_Environmentally_Controlled_data.csv``,
+        ``Indoors_Not_Environmentally_Controlled.csv``,
         ``ISCO_SOC_Crosswalk.csv``, ``ILO_ISCO_08_GLB.csv``,
-        ``LFData_WB_plus.xlsx`` and ``ILO_country_essential_workers_pct.xlsx``).
+        ``LFData_WB_plus.xlsx``, ``ILO_country_essential_workers_pct.xlsx``,
+        and optionally ``job_exposure_matrix.xls`` for JEM-based indoor context).
     results_dir:
         Where to write CSV outputs when ``write`` is ``True``.
     write:
@@ -1659,18 +1448,36 @@ def run_pipeline(
         Passed through to :func:`build_isco_lvl2_weights`. Defaults to
         ``"mean"`` (corrected behaviour). Use ``"last"`` to reproduce the
         notebook's pre-refactor outputs exactly.
+    indoor_context_method:
+        ``onet_max`` (default): max of both O*NET indoor CSVs, linear %/100.
+        ``onet_banded``: same source; 75–100% → 100% indoor, 50–75% → 50%, else 0.
+        ``jem_location``: ``job_exposure_matrix.xls`` Location buckets.
+    write_indoor_sensitivity:
+        If ``True`` (with ``write``), also write ``Indoor_Context_Sensitivity.csv``.
     """
     data_dir = Path(data_dir)
     poll_df = pd.read_excel(
         data_dir / "ISCO-08 OpinionPollCensus.xlsx", engine="openpyxl"
     )
-    onet_df = pd.read_csv(data_dir / "Indoors_Environmentally_Controlled_data.csv")
+    onet_controlled_df = pd.read_csv(
+        data_dir / "Indoors_Environmentally_Controlled_data.csv"
+    )
+    onet_not_controlled_df = pd.read_csv(
+        data_dir / "Indoors_Not_Environmentally_Controlled.csv"
+    )
     crosswalk_df = pd.read_csv(data_dir / "ISCO_SOC_Crosswalk.csv")
     ilo_df = pd.read_csv(data_dir / "ILO_ISCO_08_GLB.csv")
     lf_raw = pd.read_excel(data_dir / "LFData_WB_plus.xlsx", usecols=[0, 1, 3])
+    jem_path = data_dir / "job_exposure_matrix.xls"
 
-    weights_template = _build_isco_lvl2_template(
-        poll_df, onet_df, crosswalk_df, soc_to_isco_aggregator=soc_to_isco_aggregator
+    weights_template = build_isco_lvl2_template(
+        poll_df,
+        crosswalk_df,
+        onet_controlled_df=onet_controlled_df,
+        onet_not_controlled_df=onet_not_controlled_df,
+        indoor_context_method=indoor_context_method,
+        jem_path=jem_path if jem_path.exists() else None,
+        soc_to_isco_aggregator=soc_to_isco_aggregator,
     )
     weights = apply_group_overlaps(weights_template, GROUP_OVERLAP)
     employment_by_iso = build_employment_by_isco(ilo_df)
@@ -1761,6 +1568,10 @@ def run_pipeline(
         onsite_housing_df.to_csv(
             results_dir / "Onsite_Housing_Worker_Requirements.csv", index=False
         )
+        if write_indoor_sensitivity:
+            compare_indoor_context_methods(data_dir).to_csv(
+                results_dir / "Indoor_Context_Sensitivity.csv", index=False
+            )
 
     return EssentialWorkerOutputs(
         weights_df=weights,
@@ -1778,4 +1589,9 @@ def run_pipeline(
 
 
 if __name__ == "__main__":
-    run_pipeline(Path("data"), Path("results"), write=True)
+    run_pipeline(
+        ESSENTIAL_WORKERS_DATA,
+        ESSENTIAL_WORKERS_RESULTS,
+        write=True,
+        write_indoor_sensitivity=True,
+    )

@@ -6,13 +6,13 @@ from pathlib import Path
 # -----------------------------
 # Fixed relative paths (exactly as requested)
 # -----------------------------
-file_path_main      = "../results/Scale_up_output_MS.pkl"
-file_path_percent   = "../results/Scale_up_PERCENT_INDOOR_VITAL_MS.pkl"
-file_path_cr_man    = "../results/Scale_up_CR_MAN_MS.pkl"
-file_path_cr_repur  = "../results/Scale_up_CR_REPUR_MS.pkl"
-file_path_coalbag   = "../results/Scale_up_COALBAG_MS.pkl"
-file_path_cr_stock  = "../results/Scale_up_CR_STOCK.pkl"
-file_path_essential_workers_country = "../results/EssentialWorkersByCountry.csv"  # (not used in bundle, but kept for parity)
+file_path_main      = "../results/scale_up/Scale_up_output_MS.pkl"
+file_path_percent   = "../results/scale_up/Scale_up_PERCENT_INDOOR_VITAL_MS.pkl"
+file_path_cr_man    = "../results/scale_up/Scale_up_CR_MAN_MS.pkl"
+file_path_cr_repur  = "../results/scale_up/Scale_up_CR_REPUR_MS.pkl"
+file_path_coalbag   = "../results/scale_up/Scale_up_COALBAG_MS.pkl"
+file_path_cr_stock  = "../results/scale_up/Scale_up_CR_STOCK.pkl"
+file_path_essential_workers_country = "../results/essential_workers/EssentialWorkersByCountry.csv"  # (not used in bundle, but kept for parity)
 
 # --- add these 7 lines right after your file_path_* block ---
 from pathlib import Path

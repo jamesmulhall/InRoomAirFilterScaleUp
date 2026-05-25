@@ -10,6 +10,7 @@ dependencies:
   - matplotlib-inline
   - plotly
   - openpyxl
+  - xlrd
   - country_converter
   - uncertainties
   - jupyter

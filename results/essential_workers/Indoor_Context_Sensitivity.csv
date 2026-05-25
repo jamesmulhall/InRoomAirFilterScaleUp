@@ -1,0 +1,19 @@
+Category,Workers,% of Labour Force,indoor_context_method
+Essential workers,1966104525.8408775,52.697684666066365,onet_max
+Indoor essential workers,1157676846.8816876,31.0293214935179,onet_max
+Outdoor essential workers,808427678.9591899,21.66836317254846,onet_max
+Vital workers,1278423420.6703553,34.265703276069225,onet_max
+Indoor vital workers,632418812.5207398,16.950780958531467,onet_max
+Outdoor vital workers,646004608.1496155,17.314922317537757,onet_max
+Essential workers,1966104525.8408775,52.697684666066365,onet_banded
+Indoor essential workers,1053142299.4264374,28.227472178741152,onet_banded
+Outdoor essential workers,912962226.4144402,24.470212487325206,onet_banded
+Vital workers,1278423420.6703553,34.265703276069225,onet_banded
+Indoor vital workers,536413143.9570637,14.377531987467888,onet_banded
+Outdoor vital workers,742010276.7132916,19.888171288601338,onet_banded
+Essential workers,1966104525.8408775,52.697684666066365,jem_location
+Indoor essential workers,809180935.9906993,21.688552791664463,jem_location
+Outdoor essential workers,1156923589.8501782,31.0091318744019,jem_location
+Vital workers,1278423420.6703553,34.265703276069225,jem_location
+Indoor vital workers,307907673.7303382,8.25287836086118,jem_location
+Outdoor vital workers,970515746.9400171,26.012824915208046,jem_location

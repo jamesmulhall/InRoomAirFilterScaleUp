@@ -72,53 +72,56 @@ SUBSET_ILO_REF_AREAS = [
 
 def main() -> None:
     repo = Path(__file__).resolve().parents[2]
-    data = repo / "data"
-    out = Path(__file__).resolve().parent
+    ew_data = repo / "data" / "essential_workers"
+    su_data = repo / "data" / "scale_up"
+    out_ew = Path(__file__).resolve().parent / "essential_workers"
+    out_su = Path(__file__).resolve().parent / "scale_up"
+    out_ew.mkdir(parents=True, exist_ok=True)
+    out_su.mkdir(parents=True, exist_ok=True)
 
-    # ---- Files that are already small: copy verbatim.
     for name in (
         "ISCO-08 OpinionPollCensus.xlsx",
         "Indoors_Environmentally_Controlled_data.csv",
+        "Indoors_Not_Environmentally_Controlled.csv",
         "ISCO_SOC_Crosswalk.csv",
-        "BaghouseAirflow.csv",
-        "CR_Box_Countries_MS.csv",
     ):
-        src = data / name
-        dst = out / src.name
+        src = ew_data / name
+        dst = out_ew / src.name
         dst.write_bytes(src.read_bytes())
 
-    # ---- Country list: keep just the SUBSET rows.
-    country_list = pd.read_csv(data / "STANDARD_COUNTRY_LIST.csv", encoding="cp1252")
+    for name in ("BaghouseAirflow.csv", "CR_Box_Countries_MS.csv"):
+        src = su_data / name
+        dst = out_su / src.name
+        dst.write_bytes(src.read_bytes())
+
+    country_list = pd.read_csv(
+        su_data / "STANDARD_COUNTRY_LIST.csv", encoding="cp1252"
+    )
     country_list = country_list[country_list["ISO-3"].isin(SUBSET_ISO3)]
     country_list.to_csv(
-        out / "STANDARD_COUNTRY_LIST.csv", index=False, encoding="cp1252"
+        out_su / "STANDARD_COUNTRY_LIST.csv", index=False, encoding="cp1252"
     )
 
-    # ---- Labour force xlsx: subset by Country Name (the WB file's column 0).
-    lf = pd.read_excel(data / "LFData_WB_plus.xlsx", usecols=[0, 1, 3])
+    lf = pd.read_excel(ew_data / "LFData_WB_plus.xlsx", usecols=[0, 1, 3])
     lf = lf[lf["Country Name"].isin(SUBSET_LF_COUNTRY_NAMES)]
-    # Pad columns 0..3 to match the original engine read shape.
-    full_lf = pd.read_excel(data / "LFData_WB_plus.xlsx")
+    full_lf = pd.read_excel(ew_data / "LFData_WB_plus.xlsx")
     full_lf = full_lf[full_lf["Country Name"].isin(SUBSET_LF_COUNTRY_NAMES)]
-    full_lf.to_excel(out / "LFData_WB_plus.xlsx", index=False)
+    full_lf.to_excel(out_ew / "LFData_WB_plus.xlsx", index=False)
 
-    # ---- ILO ISCO-08 employment csv: subset by ref_area.label
-    ilo = pd.read_csv(data / "ILO_ISCO_08_GLB.csv")
+    ilo = pd.read_csv(ew_data / "ILO_ISCO_08_GLB.csv")
     ilo = ilo[ilo["ref_area.label"].isin(SUBSET_ILO_REF_AREAS)]
-    ilo.to_csv(out / "ILO_ISCO_08_GLB.csv", index=False)
+    ilo.to_csv(out_ew / "ILO_ISCO_08_GLB.csv", index=False)
 
-    # ---- ILO country %essential xlsx: subset by header-1 'cname' column
     ilo_pct = pd.read_excel(
-        data / "ILO_country_essential_workers_pct.xlsx",
+        ew_data / "ILO_country_essential_workers_pct.xlsx",
         sheet_name="Sheet1",
         header=1,
     )
-    keep_cnames = SUBSET_ILO_REF_AREAS + ["United Kingdom of Great Britain and Northern Ireland"]
+    keep_cnames = SUBSET_ILO_REF_AREAS + [
+        "United Kingdom of Great Britain and Northern Ireland"
+    ]
     ilo_pct_filt = ilo_pct[ilo_pct["cname"].isin(keep_cnames)]
-    # Rebuild the workbook so the header offset (header=1) is preserved.
-    # We write a single empty top row and then the data so the loader still
-    # works without changes.
-    with pd.ExcelWriter(out / "ILO_country_essential_workers_pct.xlsx") as writer:
+    with pd.ExcelWriter(out_ew / "ILO_country_essential_workers_pct.xlsx") as writer:
         pd.DataFrame([[""] * ilo_pct.shape[1]], columns=ilo_pct.columns).to_excel(
             writer, sheet_name="Sheet1", index=False, header=False
         )
@@ -126,7 +129,7 @@ def main() -> None:
             writer, sheet_name="Sheet1", index=False, startrow=1
         )
 
-    print(f"Wrote {len(SUBSET_ISO3)}-country fixtures into {out}")
+    print(f"Wrote {len(SUBSET_ISO3)}-country fixtures into {out_ew} and {out_su}")
 
 
 if __name__ == "__main__":

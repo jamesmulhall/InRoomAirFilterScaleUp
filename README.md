@@ -1,78 +1,103 @@
 # In Room Air Filter Scale Up GitHub Repository
-A scale up simulation of various in room filtration systems that could protect essential workers in the event of a catastrophic pandemic. 
+
+A scale up simulation of various in room filtration systems that could protect essential workers in the event of a catastrophic pandemic.
 
 ---
 
 ## Overview
-This git repository holds the code for the In Room Air Filtration ANU Capstone group in partnership with ALLFED. It contains the data processing and analysis of our simulations of scale up in room systems as well as our essential worker estimation given an extreme pandemic scenario. For more information, visit the ANU Capstone team's repositiory and landing page. 
 
-Landing Page: https://sites.google.com/view/anu-capstone-air-filtration/home 
+This repository holds the data processing and analysis for in-room filtration scale-up simulations and essential-worker estimation under an extreme pandemic scenario.
+
+Landing Page: https://sites.google.com/view/anu-capstone-air-filtration/home
 
 Repository: https://drive.google.com/drive/folders/1PC_QixM3_B3nh0tNhnJJnPxHECVEsJI7
 
 ---
 
-## Project Structure
-- [Data](#data)
-- [Results](#results)
-- [Scripts](#scripts)
-- [SRC](#src)
+## Project structure
+
+| Path | Purpose |
+| --- | --- |
+| `data/essential_workers/` | ILO, O*NET, poll, crosswalk, labour force, JEM (optional) |
+| `data/scale_up/` | Country list, CR box parameters, coal baghouse airflow |
+| `results/essential_workers/` | Essential/vital worker CSV outputs |
+| `results/scale_up/` | Scale-up trajectory CSV/PKL and time-to-reach tables |
+| `results/visualizations/` | Interactive HTML choropleths |
+| `src/preprocessing.py` | Load and transform raw essential-worker inputs |
+| `src/essential_workers.py` | Overlap calibration, labour-force pipeline, validation |
+| `src/countries.py` | CR-box / baghouse scale-up by country |
+| `scripts/` | Processing notebooks (`essential_workers_processing`, `scale_up_processing`) |
+| `scripts/visualization/` | Plotly choropleths and scale-up visualisers |
 
 ---
 
 ## Installation
-Clone the repository and install dependencies:
 
-```
-git clone https://github.com/SPROOK/InRoomAirFilterScaleUp.git 
+```bash
+git clone https://github.com/SPROOK/InRoomAirFilterScaleUp.git
 cd InRoomAirFilterScaleUp
 pip install -r requirements.txt
+pip install -e .
 ```
 
 ---
 
 ## Data
-The `data` folder contains all source datasets used in our scale-up estimation and analysis. This includes data for our **Essential Worker Analysis**, **CR Box Analysis**, and **Coal Baghouse Analysis**.
 
-### Essential Worker Analysis
-- `ILO_ISCO_08_GLB.csv`  
-- `Indoors_Environmentally_Controlled_data.csv`  
-- `ISCO_SOC_Crosswalk.csv`  
-- `ISCO-08 OpinionPollCensus.xlsx`  
+### Essential worker analysis (`data/essential_workers/`)
+
+- `ILO_ISCO_08_GLB.csv`
+- `Indoors_Environmentally_Controlled_data.csv`
+- `Indoors_Not_Environmentally_Controlled.csv`
+- `job_exposure_matrix.xls` (optional; JEM indoor sensitivity)
+- `ISCO_SOC_Crosswalk.csv`
+- `ISCO-08 OpinionPollCensus.xlsx`
 - `LFData_WB_plus.xlsx`
+- `ILO_country_essential_workers_pct.xlsx`
 
-### CR Box Analysis
+### Scale-up analysis (`data/scale_up/`)
+
+- `STANDARD_COUNTRY_LIST.csv`
 - `CR_Box_Countries_MS.csv`
-
-### Coal Baghouse Analysis
 - `BaghouseAirflow.csv`
-
-Additionally, the dataset `STANDARD_COUNTRY_LIST.csv` is used throughout the project to standardize the list of countries included in our scale-up estimation and simulations.
 
 ---
 
 ## Results
-The `results` folder contains all outputs from our scale-up estimation and simulation processes.
 
-### Output Images
-Stored in a dedicated subfolder containing static visualizations and figures.
-
-### Interactive Outputs
-`.html` files demonstrate interactive simulations and visualizations generated as part of the analysis.
-
-### Quantitative Results
-Raw numerical results are stored in `.csv` files.  
-When uncertainty values (`ufloats`) are included, a corresponding `.pkl` file is provided. These `.pkl` files preserve the uncertainty data structure so that results can be reloaded into code environments without loss of precision or data integrity.
+- **`results/essential_workers/`** — per-country/regional worker counts, validation, overlap calibration, on-site housing requirements
+- **`results/scale_up/`** — CADR trajectories (`.csv` / `.pkl`), time-to-reach tables
+- **`results/visualizations/`** — `.html` choropleth maps
 
 ---
 
 ## Scripts
-The `scripts` folder contains all source code used to process data and generate results.  
-It is organized into two main categories:
 
-- **Processing Scripts** - handle data, transformation, and scale-up computations.  
-- **Visualizer Scripts** - generate plots, charts, and interactive dashboards.
+**Processing**
 
-Each script is named to reflect the specific section of the analysis it supports and ends with a suffix
+- `scripts/essential_workers_processing.ipynb` — walkthrough of the essential-worker pipeline (including indoor-fraction method comparison)
+- `scripts/scale_up_processing.ipynb` — CR-box / baghouse scale-up (requires essential-worker outputs)
 
+**Visualization** (`scripts/visualization/`)
 
+- `EssentialWorkers_Choropleth_Visualiser.ipynb`
+- `Scale_Up_Visualiser.ipynb`
+- `Airflow_Visualiser.ipynb`
+- `Time_To_Cover_Choropleth_Visualiser.ipynb`
+- `UNRegion_Choropleth_Visualiser.py` (helper module)
+
+---
+
+## Running pipelines from the command line
+
+```bash
+PYTHONPATH=src python -m essential_workers
+PYTHONPATH=src python -c "from countries import run_pipeline; from paths import SCALE_UP_DATA, SCALE_UP_RESULTS; run_pipeline(SCALE_UP_DATA, SCALE_UP_RESULTS, write=True)"
+```
+
+## Tests
+
+```bash
+pytest                    # fast, uses tests/fixtures/
+pytest --full-data        # includes ILO sense-checks on real data
+```
