@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import warnings
 from pathlib import Path
 from typing import TYPE_CHECKING, Any, Dict, Optional
 
@@ -225,30 +226,92 @@ def build_isco_lvl2_template(
     return collapse_poll_l4_to_lvl2(l4_df)
 
 
+def _parse_isco_l2_code(classif_label: str) -> str:
+    """Extract normalised ISCO-08 L2 key from ``classif1.label`` (e.g. ``22``, ``Tot``, ``Not``)."""
+    part = str(classif_label).split(":", 1)[-1].strip()
+    if part.lower().startswith("total"):
+        return "Tot"
+    if part.lower().startswith("not"):
+        return "Not"
+    return part[:2] if part[:2].isdigit() else part[:3].strip()
+
+
+def _nec_pct_for_year(year_codes: Dict[str, float]) -> Optional[float]:
+    tot = year_codes.get("Tot")
+    nec = year_codes.get("Not")
+    if tot is None or not pd.notna(tot) or tot <= 0:
+        return None
+    if nec is None or not pd.notna(nec):
+        return 0.0
+    return float(nec) / float(tot)
+
+
+def _select_country_ilo_year(
+    years: Dict[int, Dict[str, float]],
+) -> Optional[int]:
+    """Pick one survey year: latest with NEC/Tot <= 10%, else minimum NEC %."""
+    if not years:
+        return None
+    sorted_years = sorted(years)
+    if not any(_nec_pct_for_year(years[y]) is not None for y in sorted_years):
+        return sorted_years[-1]
+    for year in reversed(sorted_years):
+        nec_pct = _nec_pct_for_year(years[year])
+        if nec_pct is not None and nec_pct <= 0.10:
+            return year
+    best_year = sorted_years[0]
+    best_nec = float("inf")
+    for year in sorted_years:
+        nec_pct = _nec_pct_for_year(years[year])
+        if nec_pct is None:
+            continue
+        if nec_pct < best_nec or (nec_pct == best_nec and year > best_year):
+            best_nec = nec_pct
+            best_year = year
+    return best_year
+
+
 def build_employment_by_isco(ilo_df: pd.DataFrame) -> Dict[str, Dict[str, float]]:
-    """Reduce ILO ISCO-08 L2 employment CSV to ``{country: {code: employment}}``."""
+    """Reduce ILO ISCO-08 L2 employment CSV to ``{country: {code: employment}}``.
+
+  - Keeps only ``sex.label == "Total"`` when that column exists.
+  - Uses one survey year per country (all codes from the same year).
+  - Year: latest with NEC share of total <= 10%; if none qualify, the year
+    with the lowest NEC share (ties → more recent year).
+  """
     df = ilo_df.copy()
-    df["ISCO-8 L2 Code"] = df["classif1.label"].str.split(":").str[1].str[1:4]
-    df["Employment"] = df["obs_value"] * 1000
+    if "sex.label" in df.columns:
+        df = df[df["sex.label"] == "Total"].copy()
+    else:
+        warnings.warn(
+            "ILO employment CSV has no sex.label column; sex breakdown not filtered.",
+            stacklevel=2,
+        )
+
+    df["ISCO-8 L2 Code"] = df["classif1.label"].map(_parse_isco_l2_code)
+    df["Employment"] = pd.to_numeric(df["obs_value"], errors="coerce") * 1000
     df = df.rename(columns={"ref_area.label": "Country"})[
         ["Country", "ISCO-8 L2 Code", "Employment", "time"]
     ]
+    df = df[df["Employment"].notna()]
 
-    nested: Dict[str, Dict[str, Dict[Any, float]]] = {}
+    by_country_year: Dict[str, Dict[int, Dict[str, float]]] = {}
     for _, row in df.iterrows():
-        nested.setdefault(row["Country"], {}).setdefault(row["ISCO-8 L2 Code"], {})[
-            row["time"]
-        ] = row["Employment"]
+        year = int(row["time"])
+        by_country_year.setdefault(row["Country"], {}).setdefault(year, {})[
+            row["ISCO-8 L2 Code"]
+        ] = float(row["Employment"])
 
-    nested = normalise_country_keys(nested)
+    by_country_year = normalise_country_keys(by_country_year)
 
-    for country, code_dict in nested.items():
-        for code, year_dict in list(code_dict.items()):
-            if isinstance(year_dict, dict) and year_dict:
-                valid = {y: v for y, v in year_dict.items() if pd.notna(v)}
-                code_dict[code] = valid[max(valid)] if valid else None
+    nested: Dict[str, Dict[str, float]] = {}
+    for country, years in by_country_year.items():
+        year = _select_country_ilo_year(years)
+        if year is None:
+            continue
+        nested[country] = dict(years[year])
 
-    return nested  # type: ignore[return-value]
+    return nested
 
 
 def load_ilo_published_pct(path: Path) -> pd.DataFrame:

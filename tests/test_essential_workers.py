@@ -194,34 +194,165 @@ def test_invalid_aggregator_raises(data_dir):
 # ---------------------------------------------------------------------------
 
 
+def _ilo_row(country, classif, obs, year, sex="Total"):
+    return {
+        "ref_area.label": country,
+        "source.label": "LFS",
+        "indicator.label": "Employment",
+        "sex.label": sex,
+        "classif1.label": classif,
+        "time": year,
+        "obs_value": obs,
+    }
+
+
 def test_build_employment_picks_latest_non_nan_year():
-    """``build_employment_by_isco`` keeps the latest non-NaN value per code."""
+    """Country-year snapshot uses latest year when NEC rule does not apply (no Tot)."""
     df = pd.DataFrame(
         [
-            {
-                "ref_area.label": "Australia",
-                "classif1.label": "Occupation (ISCO-08), 2 digit level: 22 - Health",
-                "obs_value": 100.0,
-                "time": 2018,
-            },
-            {
-                "ref_area.label": "Australia",
-                "classif1.label": "Occupation (ISCO-08), 2 digit level: 22 - Health",
-                "obs_value": 200.0,
-                "time": 2021,
-            },
-            {
-                "ref_area.label": "Australia",
-                "classif1.label": "Occupation (ISCO-08), 2 digit level: 22 - Health",
-                "obs_value": float("nan"),
-                "time": 2024,
-            },
+            _ilo_row(
+                "Australia",
+                "Occupation (ISCO-08), 2 digit level: 22 - Health",
+                100.0,
+                2018,
+            ),
+            _ilo_row(
+                "Australia",
+                "Occupation (ISCO-08), 2 digit level: 22 - Health",
+                200.0,
+                2021,
+            ),
+            _ilo_row(
+                "Australia",
+                "Occupation (ISCO-08), 2 digit level: 22 - Health",
+                float("nan"),
+                2024,
+            ),
         ]
     )
     out = ew.build_employment_by_isco(df)
     aus = next(iter(out.values()))
-    # employment is obs_value * 1000
-    assert aus["22 "] == 200_000.0  # 2021 wins (latest non-NaN)
+    assert aus["22"] == 200_000.0
+
+
+def test_build_employment_ignores_non_total_sex():
+    """Male/Female rows are dropped; Total row is kept."""
+    df = pd.DataFrame(
+        [
+            _ilo_row(
+                "Barbados",
+                "Occupation (ISCO-08), 2 digit level: Total",
+                100.0,
+                2024,
+                sex="Male",
+            ),
+            _ilo_row(
+                "Barbados",
+                "Occupation (ISCO-08), 2 digit level: Total",
+                500.0,
+                2024,
+                sex="Total",
+            ),
+            _ilo_row(
+                "Barbados",
+                "Occupation (ISCO-08), 2 digit level: 22 - Health",
+                999.0,
+                2024,
+                sex="Female",
+            ),
+            _ilo_row(
+                "Barbados",
+                "Occupation (ISCO-08), 2 digit level: 22 - Health",
+                50.0,
+                2024,
+                sex="Total",
+            ),
+        ]
+    )
+    out = ew.build_employment_by_isco(df)
+    t = out["Barbados"]
+    assert t["Tot"] == 500_000.0
+    assert t["22"] == 50_000.0
+
+
+def test_build_employment_year_fallback_high_nec():
+    """Prefer latest year with NEC/Tot <= 10% over a more recent high-NEC year."""
+    tot = "Occupation (ISCO-08), 2 digit level: Total"
+    nec = "Occupation (ISCO-08), 2 digit level: Not elsewhere classified"
+    health = "Occupation (ISCO-08), 2 digit level: 22 - Health"
+    df = pd.DataFrame(
+        [
+            _ilo_row("Belize", tot, 1000.0, 2024),
+            _ilo_row("Belize", nec, 800.0, 2024),
+            _ilo_row("Belize", health, 50.0, 2024),
+            _ilo_row("Belize", tot, 1000.0, 2023),
+            _ilo_row("Belize", nec, 50.0, 2023),
+            _ilo_row("Belize", health, 100.0, 2023),
+        ]
+    )
+    out = ew.build_employment_by_isco(df)
+    n = out["Belize"]
+    assert n["Tot"] == 1_000_000.0
+    assert n["Not"] == 50_000.0
+    assert n["22"] == 100_000.0
+
+
+def test_build_employment_year_fallback_all_high_nec():
+    """When every year has NEC > 10%, use the year with the lowest NEC %."""
+    tot = "Occupation (ISCO-08), 2 digit level: Total"
+    nec = "Occupation (ISCO-08), 2 digit level: Not elsewhere classified"
+    df = pd.DataFrame(
+        [
+            _ilo_row("Benin", tot, 100.0, 2022),
+            _ilo_row("Benin", nec, 50.0, 2022),
+            _ilo_row("Benin", tot, 100.0, 2023),
+            _ilo_row("Benin", nec, 40.0, 2023),
+            _ilo_row("Benin", tot, 100.0, 2024),
+            _ilo_row("Benin", nec, 30.0, 2024),
+        ]
+    )
+    out = ew.build_employment_by_isco(df)
+    assert out["Benin"]["Not"] == 30_000.0
+
+
+def test_compute_worker_dicts_nec_imputation():
+    """NEC employment is counted at the coded occupations' average essential/vital weights."""
+    weights = ew.build_isco_lvl2_weights(
+        pd.read_excel(
+            Path(__file__).resolve().parents[1]
+            / "data/essential_workers/ISCO-08 OpinionPollCensus.xlsx"
+        ),
+        pd.read_csv(
+            Path(__file__).resolve().parents[1]
+            / "data/essential_workers/ISCO_SOC_Crosswalk.csv"
+        ),
+        pd.read_csv(
+            Path(__file__).resolve().parents[1]
+            / "data/essential_workers/Indoors_Environmentally_Controlled_data.csv"
+        ),
+        pd.read_csv(
+            Path(__file__).resolve().parents[1]
+            / "data/essential_workers/Indoors_Not_Environmentally_Controlled.csv"
+        ),
+    )
+    emp = {
+        "Barbados": {
+            "Tot": 1000.0,
+            "Not": 200.0,
+            "52": 800.0,
+        }
+    }
+    workers = ew.compute_worker_dicts(emp, weights)
+    w = ew.apply_group_overlaps(weights, ew.GROUP_OVERLAP)
+    wt_ilo = w.loc["52", "ISCO_08_ILOWeights_Total"]
+    wt_poll = w.loc["52", "ISCO_08_PollWeights_Total"]
+    coded = 800.0
+    ew_coded = coded * wt_ilo
+    vw_coded = coded * wt_poll
+    expected_ew = ew_coded + 200.0 * (ew_coded / coded)
+    expected_vw = vw_coded + 200.0 * (vw_coded / coded)
+    assert workers.ew_ilo["Barbados"] == pytest.approx(expected_ew, rel=1e-9)
+    assert workers.vw_poll["Barbados"] == pytest.approx(expected_vw, rel=1e-9)
 
 
 def test_armed_forces_subtotal_matches_codes_01_02_03(ew_outputs):
@@ -234,10 +365,7 @@ def test_armed_forces_subtotal_matches_codes_01_02_03(ew_outputs):
     # Pick a country with armed-forces employment
     target = None
     for c, vals in emp.items():
-        if any(
-            (f"{code} ") in vals and pd.notna(vals[f"{code} "])
-            for code in ("01", "02", "03")
-        ):
+        if any(code in vals and pd.notna(vals[code]) for code in ("01", "02", "03")):
             target = c
             break
     if target is None:
@@ -245,10 +373,9 @@ def test_armed_forces_subtotal_matches_codes_01_02_03(ew_outputs):
 
     expected = 0.0
     for code in ew.ARMED_FORCES_L2:
-        key = f"{code} "
-        if key in emp[target] and pd.notna(emp[target][key]):
+        if code in emp[target] and pd.notna(emp[target][code]):
             w = ilo_w.get(code, 0)
-            expected += emp[target][key] * (w if pd.notna(w) else 0)
+            expected += emp[target][code] * (w if pd.notna(w) else 0)
     assert workers.af_indoor_essential[target] == pytest.approx(expected, rel=1e-9)
 
 

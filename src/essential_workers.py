@@ -911,10 +911,12 @@ def compute_worker_dicts(
         ilo_w_total = weights["ISCO_08_ILOWeights_Total"].to_dict()
         iew = ew = ivw = vw = 0.0
         af_ind_e = af_e = 0.0
+        coded_emp = 0.0
         for code, employment in code_dict.items():
             code_str = str(code).strip()
-            if not pd.notna(employment):
+            if not pd.notna(employment) or code_str in ("Tot", "Not"):
                 continue
+            coded_emp += employment
             if code_str in poll_w:
                 w = poll_w[code_str]
                 ivw += employment * w if pd.notna(w) else 0
@@ -930,6 +932,22 @@ def compute_worker_dicts(
                 if code_str in ARMED_FORCES_L2:
                     af_ind_e += contrib_indoor
                     af_e += contrib_total
+
+        nec_emp = code_dict.get("Not")
+        if (
+            nec_emp is not None
+            and pd.notna(nec_emp)
+            and nec_emp > 0
+            and coded_emp > 0
+        ):
+            avg_ew = ew / coded_emp
+            avg_vw = vw / coded_emp
+            avg_iew = iew / coded_emp
+            avg_ivw = ivw / coded_emp
+            ew += nec_emp * avg_ew
+            vw += nec_emp * avg_vw
+            iew += nec_emp * avg_iew
+            ivw += nec_emp * avg_ivw
 
         out.iew_ilo[country] = iew
         out.ew_ilo[country] = ew
