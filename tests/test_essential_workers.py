@@ -577,6 +577,43 @@ def test_compute_global_worker_summary_outdoor_is_residual(ew_outputs):
     )
 
 
+def test_fill_missing_labour_force_from_ilo_tot():
+    lf_df = pd.DataFrame(
+        {
+            "Country Name": ["Palestine", "Nigeria"],
+            "Country Code": ["PSE", "NGA"],
+            "Labour Force (2024)": [np.nan, 80_000_000.0],
+        }
+    )
+    employment = {
+        "Palestine": {"Tot": 719_891.0, "22": 23_046.0},
+        "Nigeria": {"Tot": 71_000_000.0},
+    }
+    out = ew.fill_missing_labour_force_from_ilo_tot(lf_df, employment)
+    assert out.loc[out["Country Code"] == "PSE", "Labour Force (2024)"].iloc[
+        0
+    ] == pytest.approx(719_891.0)
+    assert out.loc[out["Country Code"] == "NGA", "Labour Force (2024)"].iloc[
+        0
+    ] == pytest.approx(80_000_000.0)
+
+
+@pytest.mark.full_data
+def test_palestine_worker_counts_after_ilo_tot_lf_fallback(ew_outputs):
+    row = ew_outputs.labour_force_df.loc[
+        ew_outputs.labour_force_df["Country Name"] == "Palestine"
+    ].iloc[0]
+    assert row["Labour Force (2024)"] == pytest.approx(719_891.0, rel=1e-4)
+    assert row["Essential Workers"] == pytest.approx(
+        row["%Essential Workers"] * row["Labour Force (2024)"], rel=1e-6
+    )
+    assert row["Vital Workers"] > 0
+    housing = ew_outputs.onsite_housing_df.loc[
+        ew_outputs.onsite_housing_df["Country Name"] == "Palestine"
+    ].iloc[0]
+    assert housing["Essential Workers (Housing Requirement)"] > 0
+
+
 def test_compute_absolute_counts_equals_pct_times_lf():
     df = pd.DataFrame(
         {

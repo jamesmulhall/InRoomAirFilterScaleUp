@@ -1219,6 +1219,36 @@ def backfill_neighbours(
     return df
 
 
+def fill_missing_labour_force_from_ilo_tot(
+    lf_df: pd.DataFrame,
+    employment_by_iso: Dict[str, Dict[str, float]],
+    lf_col: str = "Labour Force (2024)",
+    employment_country_aliases: Optional[Dict[str, str]] = None,
+) -> pd.DataFrame:
+    """Fill missing World Bank labour force with ILO ``Tot`` employment (persons).
+
+    ``build_employment_by_isco`` already converts ILO thousands to persons. Used when
+    ``LFData_WB_plus.xlsx`` has no figure (e.g. State of Palestine).
+    """
+    if employment_country_aliases is None:
+        employment_country_aliases = EMPLOYMENT_COUNTRY_ALIASES
+    df = lf_df.copy()
+    for idx, row in df.iterrows():
+        if pd.notna(row.get(lf_col)):
+            continue
+        emp = employment_for_country(
+            row["Country Name"],
+            employment_by_iso,
+            employment_country_aliases,
+        )
+        if not emp:
+            continue
+        tot = emp.get("Tot")
+        if tot is not None and pd.notna(tot) and tot > 0:
+            df.at[idx, lf_col] = float(tot)
+    return df
+
+
 def compute_absolute_counts(
     lf_df: pd.DataFrame, lf_col: str = "Labour Force (2024)"
 ) -> pd.DataFrame:
@@ -1506,6 +1536,7 @@ def run_pipeline(
     workers_model = compute_worker_dicts(employment_by_iso, weights_template)
 
     lf_df = prepare_labour_force(lf_raw)
+    lf_df = fill_missing_labour_force_from_ilo_tot(lf_df, employment_by_iso)
     overlap_cal = calibrate_country_overlaps(
         lf_df, employment_by_iso, ilo_pct_df, weights_template
     )
