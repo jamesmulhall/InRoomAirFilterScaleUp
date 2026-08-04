@@ -832,3 +832,11 @@ def run_pipeline(
         pct_1y_region_df=pct_1y_region_df,
         pct_1y_country_df=pct_1y_country_df,
     )
+
+
+if __name__ == "__main__":
+    run_pipeline(
+        SCALE_UP_DATA,
+        SCALE_UP_RESULTS,
+        write=True,
+    )

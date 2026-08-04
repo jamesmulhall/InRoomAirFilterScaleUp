@@ -745,9 +745,12 @@ def build_group_overlap_calibration_detail(
     records = []
     for _, orow in overlap_country_df.iterrows():
         country = orow["Country Name"]
-        emp = employment_for_country(
-            country, employment_by_iso, EMPLOYMENT_COUNTRY_ALIASES
-        ) or {}
+        emp = (
+            employment_for_country(
+                country, employment_by_iso, EMPLOYMENT_COUNTRY_ALIASES
+            )
+            or {}
+        )
         masses = essential_mass_by_group(emp, weights_template) if emp else {}
         model_pct = workers_model.ew_pc.get(country)
         cal_pct = workers_calibrated.ew_pc.get(country)
@@ -934,12 +937,7 @@ def compute_worker_dicts(
                     af_e += contrib_total
 
         nec_emp = code_dict.get("Not")
-        if (
-            nec_emp is not None
-            and pd.notna(nec_emp)
-            and nec_emp > 0
-            and coded_emp > 0
-        ):
+        if nec_emp is not None and pd.notna(nec_emp) and nec_emp > 0 and coded_emp > 0:
             avg_ew = ew / coded_emp
             avg_vw = vw / coded_emp
             avg_iew = iew / coded_emp
@@ -1465,7 +1463,7 @@ def run_pipeline(
     results_dir: Optional[Path] = None,
     write: bool = False,
     soc_to_isco_aggregator: str = "mean",
-    indoor_context_method: IndoorContextMethod = "onet_max",
+    indoor_context_method: IndoorContextMethod = "onet_banded",
     write_indoor_sensitivity: bool = False,
 ) -> EssentialWorkerOutputs:
     """Run the full essential-worker pipeline end-to-end.

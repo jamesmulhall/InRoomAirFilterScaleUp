@@ -22,12 +22,12 @@ Repository: https://drive.google.com/drive/folders/1PC_QixM3_B3nh0tNhnJJnPxHECVE
 | `data/scale_up/` | Country list, CR box parameters, coal baghouse airflow |
 | `results/essential_workers/` | Essential/vital worker CSV outputs |
 | `results/scale_up/` | Scale-up trajectory CSV/PKL and time-to-reach tables |
-| `results/visualizations/` | Interactive HTML choropleths |
+| `results/visualizations/` | HTML choropleths and ALLFED-styled PNG maps |
 | `src/preprocessing.py` | Load and transform raw essential-worker inputs |
 | `src/essential_workers.py` | Overlap calibration, labour-force pipeline, validation |
 | `src/countries.py` | CR-box / baghouse scale-up by country |
 | `scripts/` | Processing notebooks (`essential_workers_processing`, `scale_up_processing`) |
-| `scripts/visualization/` | Plotly choropleths and scale-up visualisers |
+| `scripts/visualization/` | Plotly choropleths, ALLFED matplotlib maps, scale-up visualisers |
 
 ---
 
@@ -67,7 +67,7 @@ pip install -e .
 
 - **`results/essential_workers/`** — per-country/regional worker counts, validation, overlap calibration, on-site housing requirements
 - **`results/scale_up/`** — CADR trajectories (`.csv` / `.pkl`), time-to-reach tables
-- **`results/visualizations/`** — `.html` choropleth maps
+- **`results/visualizations/`** — `.html` choropleth maps and `.png` ALLFED-styled figures
 
 ---
 
@@ -85,14 +85,18 @@ pip install -e .
 - `Airflow_Visualiser.ipynb`
 - `Time_To_Cover_Choropleth_Visualiser.ipynb`
 - `UNRegion_Choropleth_Visualiser.py` (helper module)
+- `plot_essential_workers.py` — ALLFED-styled world maps of essential/vital worker shares (requires `geopandas`, install via `mamba install -c conda-forge geopandas`)
+- `plot_filtration_coverage.py` — filtration coverage maps at week 12 (by country and by UN region); total CADR line plots, stacked area plots, and stacked line plots by source, each with the vital–essential CADR band (same deps; 300 DPI PNGs; fetches ALLFED style sheet from GitHub on first run)
 
 ---
 
 ## Running pipelines from the command line
 
 ```bash
-PYTHONPATH=src python -m essential_workers
-PYTHONPATH=src python -c "from countries import run_pipeline; from paths import SCALE_UP_DATA, SCALE_UP_RESULTS; run_pipeline(SCALE_UP_DATA, SCALE_UP_RESULTS, write=True)"
+PYTHONPATH=src python src/essential_workers.py
+PYTHONPATH=src python src/countries.py
+conda run -n InRoomAirFilterScaleUp python scripts/visualization/plot_essential_workers.py
+conda run -n InRoomAirFilterScaleUp python scripts/visualization/plot_filtration_coverage.py
 ```
 
 ## Tests
