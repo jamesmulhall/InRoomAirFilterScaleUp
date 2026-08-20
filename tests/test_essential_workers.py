@@ -862,3 +862,83 @@ def test_full_data_backfill_fills_every_country(ew_outputs):
         "%Vital Workers",
     ):
         assert lf[col].notna().all(), f"{col} still has NaN rows on full data"
+
+
+# ---------------------------------------------------------------------------
+# ASHRAE-241 CADR requirements
+# ---------------------------------------------------------------------------
+
+
+def test_group_and_country_cadr_requirements(data_dir):
+    """Two-group synthetic country: group CADR sums to country totals."""
+    flat_overlap = {g: 1.0 for g in ew.GROUP_OVERLAP}
+    flat_overlap["ArmedForces"] = ew.ARMED_FORCES_OVERLAP_FIXED
+    template = pd.DataFrame(
+        {
+            "Group": {"22": "Health", "52": "Retail"},
+            "Essential Weight ILO": {"22": 1, "52": 1},
+            "Vital Weight POLL": {"22": 1.0, "52": 0.5},
+            ew.INDOORS_CONTEXT_COLUMN: {"22": 1.0, "52": 1.0},
+        }
+    )
+    employment = {"Testland": {"22": 600.0, "52": 400.0, "Tot": 1000.0}}
+    lf_df = pd.DataFrame(
+        [
+            {
+                "Country Name": "Testland",
+                "Country Code": "TST",
+                "Region": "Northern Europe",
+                "Labour Force (2024)": 1_000_000.0,
+                "Indoor Essential Workers": 1_000_000.0,
+                "Indoor Vital Workers": 800_000.0,
+            }
+        ]
+    )
+
+    group_df = ew.compute_group_workers_and_cadr(
+        data_dir,
+        lf_df,
+        employment,
+        template,
+        {"Testland": flat_overlap},
+    )
+    health = group_df.loc[group_df["occupational_group"] == "Health"].iloc[0]
+    retail = group_df.loc[group_df["occupational_group"] == "Retail"].iloc[0]
+
+    assert health["Indoor Essential Workers"] == pytest.approx(600_000)
+    assert health["Indoor Vital Workers"] == pytest.approx(600_000)
+    assert retail["Indoor Essential Workers"] == pytest.approx(400_000)
+    assert retail["Indoor Vital Workers"] == pytest.approx(200_000)
+
+    scaled_health = 35 * ew.ASHRAE_SCALE_FACTOR
+    scaled_retail = 20 * ew.ASHRAE_SCALE_FACTOR
+    assert health[ew.SCALED_ECA_COL] == pytest.approx(scaled_health)
+    assert health[ew.INDOOR_ESSENTIAL_CADR_COL] == pytest.approx(
+        600_000 * scaled_health
+    )
+    assert retail[ew.INDOOR_VITAL_CADR_COL] == pytest.approx(200_000 * scaled_retail)
+
+    country = ew.attach_country_cadr_from_groups(lf_df, group_df)
+    assert country[ew.INDOOR_ESSENTIAL_CADR_COL].iloc[0] == pytest.approx(
+        health[ew.INDOOR_ESSENTIAL_CADR_COL] + retail[ew.INDOOR_ESSENTIAL_CADR_COL]
+    )
+    total_essential = 1_000_000.0
+    expected_eca = (
+        600_000 * scaled_health + 400_000 * scaled_retail
+    ) / total_essential
+    assert country[ew.SCALED_ECA_ESSENTIAL_COL].iloc[0] == pytest.approx(expected_eca)
+
+
+def test_pipeline_includes_group_and_cadr_outputs(ew_outputs):
+    lf = ew_outputs.labour_force_df
+    group_df = ew_outputs.group_df
+    assert not group_df.empty
+    assert set(ew.GROUP_OVERLAP) <= set(group_df["occupational_group"])
+    for col in (
+        ew.INDOOR_ESSENTIAL_CADR_COL,
+        ew.INDOOR_VITAL_CADR_COL,
+        ew.SCALED_ECA_ESSENTIAL_COL,
+        ew.SCALED_ECA_VITAL_COL,
+    ):
+        assert col in lf.columns
+    assert lf[ew.INDOOR_ESSENTIAL_CADR_COL].notna().any()

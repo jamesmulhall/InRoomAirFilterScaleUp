@@ -1,12 +1,13 @@
-"""CR Box / Coal-baghouse scale-up modelling.
+"""CR Box / coal-baghouse / portable-air-cleaner scale-up modelling.
 
 This module re-implements the analysis previously embedded in
 ``scripts/Countries_Processing.ipynb`` as a small set of pure functions
 plus a :func:`run_pipeline` orchestrator. It produces, for every country
 and UN region, week-by-week CADR (Clean Air Delivery Rate) trajectories
-from in-room filter manufacturing, repurposing, initial stock and coal
-baghouse retrofits, plus Time-To-Reach (TTR) tables and the percentage of
-indoor-vital workers covered after one year.
+from in-room filter manufacturing, repurposing, initial stock, coal
+baghouse retrofits and portable air cleaner production, plus
+Time-To-Reach (TTR) tables and the percentage of indoor-vital workers
+covered after one year.
 
 The notebook is now a thin walkthrough that imports from here.
 """
@@ -56,17 +57,19 @@ UN_REGION_LIST = [
     "Western Europe",
 ]
 
+# eCADR Requirements per worker
+CADRPP = 100  # CADR per indoor-vital worker (L/s)
+
 # Per-filter CADR (L/s)
 CR_Box_CADR_LS = 126.13
-CADRPP = 100  # CADR per indoor-vital worker (L/s)
 
 # Filter & manufacturing assumptions
 Filter_Life_Span = ufloat((2 - 1) / 2, (2 - 1) / 4)
-Scale_Up_Factor = 1 / 0.7
-Initial_Stock_in_weeks = ufloat(6, 0.5)
-Factory_minimum_production = 50000
+Scale_Up_Factor = 1 / 0.7 # Assume factories currently run at 70% of capacity and could increase to 100%
+Initial_Stock_in_weeks = ufloat(6, 0.5) # 6 weeks of annual production as stock
+Factory_minimum_production = 50000 # Minimum units produced for a country to be considered for the scale-up
 
-# Coal-baghouse retrofit
+# Coal-baghouse retrofit curve from fitted data (used to estimate scale-up from country MW)
 Coalbaghouse_efficency = ufloat((0.8 + 0.5) / 2, (0.8 - 0.5) / 4)
 Coalbaghouse_gradient = ufloat(1717, 419.3 / 2)
 Coalbaghouse_offset = 33807
@@ -81,7 +84,7 @@ CR_Box_70_til_100_Delay = 6
 # Distribution of repurposed CR Boxes across the active weeks.
 REPUR_LIST = [0.04, 0.05, 0.06, 0.09, 0.13, 0.26, 0.13, 0.09, 0.06, 0.05, 0.04]
 
-# Air-filter market reference values (USD/year, MERV breakdown).
+# CR Boxes: Air-filter market reference values (USD/year, MERV breakdown).
 Ind_Market_Rev_Per_MERV: Dict[str, float] = {
     "17-20": 2208.7e6,
     "5-8": 563.4e6,
@@ -104,6 +107,31 @@ Price_Per_Filter: Dict[str, Any] = {
 }
 Volume_to_Sale = 0.508 * 0.508 * 0.0254
 Panel_Filter = ufloat(0.35, 0.35 * 0.1 / 2)
+
+# Portable air cleaners (commercially available room units).
+# Market size sources:
+# https://www.fortunebusinessinsights.com/portable-air-purifier-market-118150
+# https://www.mordorintelligence.com/industry-reports/portable-air-purifier-market
+# https://www.expertmarketresearch.com/reports/portable-air-purifier-market
+PORTABLE_AIR_CLEANER_SALES_USD = np.mean([13.69e9, 13.0e9, 14.7e9])
+PAC_FRACTION_ROOM_CLEANERS = 0.587
+PAC_FRACTION_HEPA = 0.489
+PAC_FRACTION_NOT_PANEL = 0.5
+PORTABLE_AIR_CLEANER_AVG_PRICE_USD = ufloat(250, 50)
+Portable_Air_Cleaner_CADR_LS = CR_Box_CADR_LS
+
+PORTABLE_AIR_CLEANER_ELIGIBLE_SALES_USD = (
+    PORTABLE_AIR_CLEANER_SALES_USD
+    * PAC_FRACTION_ROOM_CLEANERS
+    * PAC_FRACTION_HEPA
+    * PAC_FRACTION_NOT_PANEL
+)
+Portable_Air_Cleaners_Annual_Units = (
+    PORTABLE_AIR_CLEANER_ELIGIBLE_SALES_USD / PORTABLE_AIR_CLEANER_AVG_PRICE_USD
+)
+
+CADR_PAC_WEEKLY = "CADR: Portable Air Cleaner Weekly Production"
+CADR_CR_WEEKLY = "CADR: CR Box Weekly Production"
 
 
 def _compute_sales(rev_per_merv: Dict[str, float]) -> Dict[str, Any]:
@@ -225,21 +253,22 @@ def manufacturing_delay_function(M: float) -> int:
     """Weeks of distribution delay as a step function of the MFS score."""
     if M > 90:
         return 1
-    if M > 85:
+    elif M > 85:
         return 2
-    if M > 80:
+    elif M > 80:
         return 3
-    if M > 75:
+    elif M > 75:
         return 4
-    if M > 70:
+    elif M > 70:
         return 5
-    if M > 65:
+    elif M > 65:
         return 6
-    if M > 60:
+    elif M > 60:
         return 7
-    if M > 55.5:
+    elif M > 55.5:
         return 8
-    return 0
+    else:
+        return 0
 
 
 # ---------------------------------------------------------------------------
@@ -247,23 +276,43 @@ def manufacturing_delay_function(M: float) -> int:
 # ---------------------------------------------------------------------------
 
 
-def _cr_man_weekly_contribution(
-    country: Country, week: int, cr_box_70_til_100_delay: int
+def _manufacturing_weekly_contribution(
+    country: Country,
+    week: int,
+    cr_box_70_til_100_delay: int,
+    weekly_cadr_property: str,
 ) -> Any:
-    """CR Box manufacturing contribution at a given week for one country."""
+    """Weekly manufacturing contribution at a given week for one country."""
     mdd = country.properties["CR Box Manufacturing Distribution Delay"]
+    weekly_cadr = country.properties[weekly_cadr_property]
     if country.properties["Big_6"]:
         delay_til_100 = cr_box_70_til_100_delay + mdd
         if week < mdd:
             return 0
         if week < delay_til_100:
-            return (0.7 + 0.05 * (week - 1)) * country.properties[
-                "CADR: CR Box Weekly Production"
-            ]
-        return country.properties["CADR: CR Box Weekly Production"]
+            return (0.7 + 0.05 * (week - 1)) * weekly_cadr
+        return weekly_cadr
     if week >= mdd:
-        return country.properties["CADR: CR Box Weekly Production"]
+        return weekly_cadr
     return 0
+
+
+def _cr_man_weekly_contribution(
+    country: Country, week: int, cr_box_70_til_100_delay: int
+) -> Any:
+    """CR Box manufacturing contribution at a given week for one country."""
+    return _manufacturing_weekly_contribution(
+        country, week, cr_box_70_til_100_delay, CADR_CR_WEEKLY
+    )
+
+
+def _pac_weekly_contribution(
+    country: Country, week: int, cr_box_70_til_100_delay: int
+) -> Any:
+    """Portable air cleaner manufacturing contribution at a given week."""
+    return _manufacturing_weekly_contribution(
+        country, week, cr_box_70_til_100_delay, CADR_PAC_WEEKLY
+    )
 
 
 def scale_up_CR_MAN(
@@ -319,18 +368,36 @@ def scale_up_COALBAG(country: Country, weeks: int) -> List[Any]:
     return data
 
 
+def scale_up_PORTABLE(
+    country: Country,
+    weeks: int,
+    cr_box_70_til_100_delay: int = CR_Box_70_til_100_Delay,
+) -> List[Any]:
+    """Portable air cleaner manufacturing scale-up trajectory (week 0 .. weeks)."""
+    data = [0]
+    for i in range(1, weeks + 1):
+        data.append(
+            data[-1] + _pac_weekly_contribution(country, i, cr_box_70_til_100_delay)
+        )
+    return data
+
+
 def scale_up_MAIN(
     country: Country,
     weeks: int,
     cr_box_70_til_100_delay: int = CR_Box_70_til_100_Delay,
     repur_list: List[float] = REPUR_LIST,
 ) -> List[Any]:
-    """Combined CADR scale-up across all four supply streams."""
+    """Combined CADR scale-up across all five supply streams."""
     cr_man = scale_up_CR_MAN(country, weeks, cr_box_70_til_100_delay)
     cr_repur = scale_up_CR_REPUR(country, weeks, repur_list)
     cr_stock = scale_up_CR_STOCK(country, weeks)
     coalbag = scale_up_COALBAG(country, weeks)
-    return [a + b + c + d for a, b, c, d in zip(cr_man, cr_repur, cr_stock, coalbag)]
+    portable = scale_up_PORTABLE(country, weeks, cr_box_70_til_100_delay)
+    return [
+        a + b + c + d + e
+        for a, b, c, d, e in zip(cr_man, cr_repur, cr_stock, coalbag, portable)
+    ]
 
 
 def compare_scale_up_data(
@@ -372,7 +439,9 @@ def compute_country_properties(
     countries: Dict[str, Country],
     usable_filters: Any = Usable_Filters,
     repurposeable_filters_ind: Any = Repurposeable_Filters_IND,
+    portable_air_cleaners_annual_units: Any = Portable_Air_Cleaners_Annual_Units,
     cr_box_cadr_ls: float = CR_Box_CADR_LS,
+    portable_air_cleaner_cadr_ls: float = Portable_Air_Cleaner_CADR_LS,
     initial_stock_in_weeks: Any = Initial_Stock_in_weeks,
     factory_minimum_production: float = Factory_minimum_production,
     coalbaghouse_efficency: Any = Coalbaghouse_efficency,
@@ -415,6 +484,7 @@ def compute_country_properties(
             "No Big_6 (MSA=1) countries found in the input - cannot scale."
         )
     scale = usable_filters / sum_scale
+    pac_scale = portable_air_cleaners_annual_units / sum_scale
 
     global_mva = sum(c.properties["MVA"] for c in countries.values())
 
@@ -434,6 +504,26 @@ def compute_country_properties(
         )
         c.properties["CADR: CR Box Weekly Production"] = (
             c.properties["CR Box Weekly Production"] * cr_box_cadr_ls
+        )
+
+        pac_x = pac_scale * msa * mva if mva > 55.5 else ufloat(0, 0)
+        pac_x = (
+            ufloat(0, 0)
+            if pac_x.nominal_value < factory_minimum_production
+            else pac_x / 4
+        )
+        c.properties["Portable Air Cleaner Annual Production"] = ufloat(
+            math.floor(pac_x.nominal_value), pac_x.std_dev
+        )
+        c.properties["Portable Air Cleaner Monthly Production"] = (
+            c.properties["Portable Air Cleaner Annual Production"] / 12
+        )
+        c.properties["Portable Air Cleaner Weekly Production"] = (
+            c.properties["Portable Air Cleaner Annual Production"] / 52
+        )
+        c.properties["CADR: Portable Air Cleaner Weekly Production"] = (
+            c.properties["Portable Air Cleaner Weekly Production"]
+            * portable_air_cleaner_cadr_ls
         )
 
         if c.properties["Big_6"]:
@@ -510,12 +600,14 @@ class ScaleUpTables:
     country_cr_repur: Dict[str, list] = field(default_factory=dict)
     country_cr_stock: Dict[str, list] = field(default_factory=dict)
     country_coalbag: Dict[str, list] = field(default_factory=dict)
+    country_portable: Dict[str, list] = field(default_factory=dict)
     region_main: Dict[str, list] = field(default_factory=dict)
     region_percent_indoor_vital: Dict[str, list] = field(default_factory=dict)
     region_cr_man: Dict[str, list] = field(default_factory=dict)
     region_cr_repur: Dict[str, list] = field(default_factory=dict)
     region_cr_stock: Dict[str, list] = field(default_factory=dict)
     region_coalbag: Dict[str, list] = field(default_factory=dict)
+    region_portable: Dict[str, list] = field(default_factory=dict)
 
 
 def _indoor_counts(country: Country) -> List[int]:
@@ -557,6 +649,7 @@ def scale_up_all_countries(
         out.region_cr_repur[region] = [0] * series_len
         out.region_cr_stock[region] = [0] * series_len
         out.region_coalbag[region] = [0] * series_len
+        out.region_portable[region] = [0] * series_len
 
     for country in countries.values():
         main_pts = scale_up_MAIN(country, weeks)
@@ -564,6 +657,7 @@ def scale_up_all_countries(
         cr_repur_pts = scale_up_CR_REPUR(country, weeks)
         cr_stock_pts = scale_up_CR_STOCK(country, weeks)
         coalbag_pts = scale_up_COALBAG(country, weeks)
+        portable_pts = scale_up_PORTABLE(country, weeks)
         indoor = _indoor_counts(country)
 
         out.country_main[country.name] = indoor + main_pts
@@ -574,6 +668,7 @@ def scale_up_all_countries(
         out.country_cr_repur[country.name] = indoor + cr_repur_pts
         out.country_cr_stock[country.name] = indoor + cr_stock_pts
         out.country_coalbag[country.name] = indoor + coalbag_pts
+        out.country_portable[country.name] = indoor + portable_pts
 
         region = country.properties.get("Region")
         if region in out.region_main:
@@ -592,6 +687,11 @@ def scale_up_all_countries(
             out.region_coalbag[region] = list(
                 np.add(out.country_coalbag[country.name], out.region_coalbag[region])
             )
+            out.region_portable[region] = list(
+                np.add(
+                    out.country_portable[country.name], out.region_portable[region]
+                )
+            )
 
     # Global = sum across all per-country series.
     global_main = [0] * series_len
@@ -599,17 +699,22 @@ def scale_up_all_countries(
     global_cr_repur = [0] * series_len
     global_cr_stock = [0] * series_len
     global_coalbag = [0] * series_len
+    global_portable = [0] * series_len
     for name in out.country_main:
         global_main = list(np.add(global_main, out.country_main[name]))
         global_cr_man = list(np.add(global_cr_man, out.country_cr_man[name]))
         global_cr_repur = list(np.add(global_cr_repur, out.country_cr_repur[name]))
         global_cr_stock = list(np.add(global_cr_stock, out.country_cr_stock[name]))
         global_coalbag = list(np.add(global_coalbag, out.country_coalbag[name]))
+        global_portable = list(
+            np.add(global_portable, out.country_portable[name])
+        )
     out.region_main["Global"] = global_main
     out.region_cr_man["Global"] = global_cr_man
     out.region_cr_repur["Global"] = global_cr_repur
     out.region_cr_stock["Global"] = global_cr_stock
     out.region_coalbag["Global"] = global_coalbag
+    out.region_portable["Global"] = global_portable
 
     # % indoor vital per region (and globally) using the region's own
     # indoor-vital population total as the denominator.
@@ -693,6 +798,7 @@ class CountriesOutputs:
     cr_repur_df: pd.DataFrame
     cr_stock_df: pd.DataFrame
     coalbag_df: pd.DataFrame
+    portable_df: pd.DataFrame
     ttr_country_df: pd.DataFrame
     ttr_region_df: pd.DataFrame
     pct_1y_region_df: pd.DataFrame
@@ -757,6 +863,9 @@ def run_pipeline(
     cr_repur_df = _tables_to_df(tables.country_cr_repur, tables.region_cr_repur)
     cr_stock_df = _tables_to_df(tables.country_cr_stock, tables.region_cr_stock)
     coalbag_df = _tables_to_df(tables.country_coalbag, tables.region_coalbag)
+    portable_df = _tables_to_df(
+        tables.country_portable, tables.region_portable
+    )
 
     ttr_country, ttr_region = time_to_reach(countries, weeks=ttr_weeks)
     ttr_country_df = pd.DataFrame.from_dict(
@@ -807,6 +916,7 @@ def run_pipeline(
             (cr_repur_df, "Scale_up_CR_REPUR_MS"),
             (cr_stock_df, "Scale_up_CR_STOCK"),
             (coalbag_df, "Scale_up_COALBAG_MS"),
+            (portable_df, "Scale_up_PORTABLE_MS"),
         ):
             df.to_csv(results_dir / f"{stem}.csv")
             df.to_pickle(results_dir / f"{stem}.pkl")
@@ -827,6 +937,7 @@ def run_pipeline(
         cr_repur_df=cr_repur_df,
         cr_stock_df=cr_stock_df,
         coalbag_df=coalbag_df,
+        portable_df=portable_df,
         ttr_country_df=ttr_country_df,
         ttr_region_df=ttr_region_df,
         pct_1y_region_df=pct_1y_region_df,

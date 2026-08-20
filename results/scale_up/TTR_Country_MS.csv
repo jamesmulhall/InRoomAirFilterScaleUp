@@ -4,21 +4,21 @@ Afghanistan,261,261
 Angola,261,261
 Albania,261,261
 Andorra,261,261
-United Arab Emirates,92,222
-Argentina,176,261
+United Arab Emirates,77,207
+Argentina,145,261
 Armenia,261,261
 American Samoa,261,261
 Antigua and Barbuda,261,261
-Australia,88,206
-Austria,51,113
+Australia,77,191
+Austria,46,106
 Azerbaijan,261,261
 Burundi,261,261
-Belgium,70,158
+Belgium,66,159
 Benin,261,261
 Burkina Faso,261,261
 Bangladesh,261,261
-Bulgaria,261,261
-Bahrain,79,189
+Bulgaria,258,261
+Bahrain,67,176
 Bahamas,261,261
 Bosnia and Herzegovina,261,261
 Belarus,261,261
@@ -31,10 +31,10 @@ Brunei Darussalam,261,261
 Bhutan,261,261
 Botswana,261,261
 Central African Republic,261,261
-Canada,94,211
-Switzerland,35,78
+Canada,84,196
+Switzerland,33,75
 Chile,261,261
-China,152,261
+China,121,251
 Côte d'Ivoire,261,261
 Cameroon,261,261
 DR Congo,261,261
@@ -42,31 +42,31 @@ Congo Republic,261,261
 Colombia,261,261
 Comoros,261,261
 Cabo Verde,261,261
-Costa Rica,220,261
+Costa Rica,184,261
 Cuba,261,261
 Curaçao,261,261
 Cayman Islands,261,261
 Cyprus,261,261
-Czechia,65,130
-Germany,27,62
+Czechia,58,119
+Germany,25,60
 Djibouti,261,261
 Dominica,261,261
-Denmark,37,88
+Denmark,35,87
 Dominican Republic,261,261
 Algeria,261,261
 Ecuador,261,261
 Egypt,261,261
 Eritrea,261,261
-Spain,123,261
-Estonia,131,261
+Spain,106,261
+Estonia,113,255
 Ethiopia,261,261
-Finland,58,126
+Finland,56,126
 Fiji,261,261
-France,71,156
+France,64,147
 Faroe Islands,261,261
 "Micronesia, Fed. Sts.",261,261
 Gabon,261,261
-United Kingdom,62,153
+United Kingdom,55,141
 Georgia,261,261
 Ghana,261,261
 Gibraltar,261,261
@@ -74,7 +74,7 @@ Guinea,261,261
 Gambia,261,261
 Guinea-Bissau,261,261
 Equatorial Guinea,261,261
-Greece,258,261
+Greece,221,261
 Grenada,261,261
 Greenland,261,261
 Guatemala,261,261
@@ -82,40 +82,40 @@ Guam,261,261
 Guyana,261,261
 Hong Kong,261,261
 Honduras,261,261
-Croatia,189,261
+Croatia,165,261
 Haiti,261,261
-Hungary,121,245
+Hungary,105,224
 Indonesia,261,261
 Isle of Man,261,261
 India,261,261
-Ireland,21,44
+Ireland,19,40
 Iran,261,261
 Iraq,261,261
-Iceland,60,134
-Israel,36,86
-Italy,47,110
+Iceland,55,129
+Israel,35,89
+Italy,41,101
 Jamaica,261,261
 Jordan,261,261
-Japan,40,113
+Japan,35,103
 Kazakhstan,261,261
 Kenya,261,261
 Kyrgyzstan,261,261
 Cambodia,261,261
 Kiribati,261,261
 St. Kitts and Nevis,261,261
-South Korea,60,129
-Kuwait,217,261
+South Korea,50,116
+Kuwait,182,261
 Laos,261,261
 Lebanon,261,261
 Liberia,261,261
 Libya,261,261
 St. Lucia,261,261
-Liechtenstein,9,17
+Liechtenstein,8,16
 Sri Lanka,261,261
 Lesotho,261,261
-Lithuania,134,261
-Luxembourg,73,164
-Latvia,147,261
+Lithuania,110,258
+Luxembourg,66,154
+Latvia,127,261
 Macau,261,261
 Saint-Martin,261,261
 Morocco,261,261
@@ -123,7 +123,7 @@ Monaco,261,261
 Moldova,261,261
 Madagascar,261,261
 Maldives,261,261
-Mexico,181,261
+Mexico,151,261
 Marshall Islands,261,261
 North Macedonia,261,261
 Mali,261,261
@@ -136,17 +136,17 @@ Mozambique,261,261
 Mauritania,261,261
 Mauritius,261,261
 Malawi,261,261
-Malaysia,239,261
+Malaysia,194,261
 Namibia,261,261
 New Caledonia,261,261
 Niger,261,261
 Nigeria,261,261
 Nicaragua,261,261
-Netherlands,45,110
-Norway,109,252
+Netherlands,40,103
+Norway,104,254
 Nepal,261,261
 Nauru,261,261
-New Zealand,84,189
+New Zealand,76,180
 Oman,261,261
 Pakistan,261,261
 Panama,261,261
@@ -154,21 +154,21 @@ Peru,261,261
 Philippines,261,261
 Palau,261,261
 Papua New Guinea,261,261
-Poland,118,237
+Poland,99,213
 Puerto Rico,261,261
 North Korea,261,261
-Portugal,103,241
+Portugal,99,249
 Paraguay,261,261
 Palestine,261,261
 French Polynesia,261,261
-Qatar,83,200
-Romania,251,261
+Qatar,69,186
+Romania,212,261
 Russia,261,261
 Rwanda,261,261
-Saudi Arabia,77,186
+Saudi Arabia,63,169
 Sudan,261,261
 Senegal,261,261
-Singapore,8,13
+Singapore,19,47
 Solomon Islands,261,261
 Sierra Leone,261,261
 El Salvador,261,261
@@ -178,9 +178,9 @@ Serbia,261,261
 South Sudan,261,261
 Sao Tome and Principe,261,261
 Suriname,261,261
-Slovakia,97,204
-Slovenia,88,191
-Sweden,43,94
+Slovakia,88,193
+Slovenia,78,179
+Sweden,39,87
 Eswatini,261,261
 Sint Maarten,261,261
 Seychelles,261,261
@@ -193,15 +193,15 @@ Tajikistan,261,261
 Turkmenistan,261,261
 Timor-Leste,261,261
 Tonga,261,261
-Trinidad and Tobago,80,192
+Trinidad and Tobago,70,193
 Tunisia,261,261
 Türkiye,261,261
 Tuvalu,261,261
 Tanzania,261,261
 Uganda,261,261
 Ukraine,261,261
-Uruguay,261,261
-United States,33,81
+Uruguay,231,261
+United States,29,74
 Uzbekistan,261,261
 St. Vincent and the Grenadines,261,261
 Venezuela,261,261

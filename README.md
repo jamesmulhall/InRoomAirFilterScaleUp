@@ -25,7 +25,7 @@ Repository: https://drive.google.com/drive/folders/1PC_QixM3_B3nh0tNhnJJnPxHECVE
 | `results/visualizations/` | HTML choropleths and ALLFED-styled PNG maps |
 | `src/preprocessing.py` | Load and transform raw essential-worker inputs |
 | `src/essential_workers.py` | Overlap calibration, labour-force pipeline, validation |
-| `src/countries.py` | CR-box / baghouse scale-up by country |
+| `src/countries.py` | CR-box / baghouse / commercial-filter scale-up by country |
 | `scripts/` | Processing notebooks (`essential_workers_processing`, `scale_up_processing`) |
 | `scripts/visualization/` | Plotly choropleths, ALLFED matplotlib maps, scale-up visualisers |
 
@@ -54,6 +54,8 @@ pip install -e .
 - `ISCO-08 OpinionPollCensus.xlsx`
 - `LFData_WB_plus.xlsx`
 - `ILO_country_essential_workers_pct.xlsx`
+- `ASHRAE241_ECA_by_occupancy.csv` — ASHRAE 241 Table 5-1 ECA rates (from Jones et al. 2025 Table 4)
+- `ASHRAE241_group_mapping.csv` — maps occupational groups to ASHRAE occupancy categories
 
 ### Scale-up analysis (`data/scale_up/`)
 
@@ -65,7 +67,7 @@ pip install -e .
 
 ## Results
 
-- **`results/essential_workers/`** — per-country/regional worker counts, validation, overlap calibration, on-site housing requirements
+- **`results/essential_workers/`** — per-country/regional worker counts, per-group worker counts and ASHRAE-241 CADR requirements (ECA × 5.7), validation, overlap calibration, on-site housing requirements
 - **`results/scale_up/`** — CADR trajectories (`.csv` / `.pkl`), time-to-reach tables
 - **`results/visualizations/`** — `.html` choropleth maps and `.png` ALLFED-styled figures
 
@@ -76,7 +78,7 @@ pip install -e .
 **Processing**
 
 - `scripts/essential_workers_processing.ipynb` — walkthrough of the essential-worker pipeline (including indoor-fraction method comparison)
-- `scripts/scale_up_processing.ipynb` — CR-box / baghouse scale-up (requires essential-worker outputs)
+- `scripts/scale_up_processing.ipynb` — CR-box / baghouse / commercial-filter scale-up (requires essential-worker outputs)
 
 **Visualization** (`scripts/visualization/`)
 

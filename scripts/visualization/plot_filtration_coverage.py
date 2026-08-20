@@ -40,6 +40,7 @@ STACK_LABELS = [
     "CR Box Stock",
     "Coal Baghouse",
     "CR Box Manufacturing",
+    "Commercial Portable Air Cleaners",
 ]
 
 
@@ -145,12 +146,13 @@ def plot_region_coverage_maps(output_dir: Path, week: int) -> None:
         vital_data,
         iso_col="Country Code",
         value_col="pct",
-        cmap="RdYlGn",
+        # cmap="RdYlGn",
+        cmap="YlGn",
         title=f"Indoor vital workers covered by filtration by UN region (week {week})",
         output_path=region_dir / f"FiltrationCoverageVitalWeek{week}.png",
         legend_label="% indoor vital covered",
         vmin=0,
-        # vmax=50,
+        vmax=100,
         alpha=0.8,
         hide_internal_borders=False,
     )
@@ -164,14 +166,14 @@ def plot_region_coverage_maps(output_dir: Path, week: int) -> None:
         essential_data,
         iso_col="Country Code",
         value_col="pct",
-        cmap="magma",
+        cmap="Reds_r",
         title=(
             f"Indoor essential workers covered by filtration by UN region (week {week})"
         ),
         output_path=region_dir / f"FiltrationCoverageEssentialWeek{week}.png",
         legend_label="% indoor essential covered",
         vmin=0,
-        # vmax=50,
+        vmax=100,
         alpha=0.8,
         hide_internal_borders=False,
     )
@@ -229,6 +231,7 @@ def plot_stacked_region(
     df_stock: pd.DataFrame,
     df_coalbag: pd.DataFrame,
     df_man: pd.DataFrame,
+    df_portable: pd.DataFrame,
     region: str,
     output_path: Path,
     *,
@@ -239,6 +242,7 @@ def plot_stacked_region(
     _, vals2, _ = get_series(df_stock, region)
     _, vals3, _ = get_series(df_coalbag, region)
     _, vals4, _ = get_series(df_man, region)
+    _, vals5, _ = get_series(df_portable, region)
     t = np.arange(len(vals1))
 
     fig, ax = plt.subplots(figsize=(10, 6))
@@ -250,13 +254,14 @@ def plot_stacked_region(
         vals2,
         vals3,
         vals4,
+        vals5,
         labels=STACK_LABELS,
         alpha=0.6,
     )
 
     if show_start:
         ax.set_xlim(0, 20)
-        total_at_20 = vals1[20] + vals2[20] + vals3[20] + vals4[20]
+        total_at_20 = vals1[20] + vals2[20] + vals3[20] + vals4[20] + vals5[20]
         ax.set_ylim(0, total_at_20 * 1.05)
 
     ax.set_ylabel("Clean Air Delivery Rate (L/s)")
@@ -280,6 +285,7 @@ def plot_stacked_lines_region(
     df_stock: pd.DataFrame,
     df_coalbag: pd.DataFrame,
     df_man: pd.DataFrame,
+    df_portable: pd.DataFrame,
     region: str,
     output_path: Path,
     *,
@@ -290,13 +296,15 @@ def plot_stacked_lines_region(
     _, vals2, _ = get_series(df_stock, region)
     _, vals3, _ = get_series(df_coalbag, region)
     _, vals4, _ = get_series(df_man, region)
+    _, vals5, _ = get_series(df_portable, region)
     t = np.arange(len(vals1))
 
     cum1 = vals1
     cum2 = vals1 + vals2
     cum3 = vals1 + vals2 + vals3
     cum4 = vals1 + vals2 + vals3 + vals4
-    cumulative = [cum1, cum2, cum3, cum4]
+    cum5 = vals1 + vals2 + vals3 + vals4 + vals5
+    cumulative = [cum1, cum2, cum3, cum4, cum5]
 
     fig, ax = plt.subplots(figsize=(10, 6))
     add_worker_range_band(ax, df_repur, region)
@@ -306,7 +314,7 @@ def plot_stacked_lines_region(
 
     if show_start:
         ax.set_xlim(0, 20)
-        ax.set_ylim(0, cum4[20] * 1.05)
+        ax.set_ylim(0, cum5[20] * 1.05)
 
     ax.set_ylabel("Clean Air Delivery Rate (L/s)")
     ax.set_xlabel("Weeks")
@@ -335,6 +343,7 @@ def plot_scale_up_regions(
     df_stock = load_scale_up_table(SCALE_UP_RESULTS / "Scale_up_CR_STOCK")
     df_coalbag = load_scale_up_table(SCALE_UP_RESULTS / "Scale_up_COALBAG_MS")
     df_man = load_scale_up_table(SCALE_UP_RESULTS / "Scale_up_CR_MAN_MS")
+    df_portable = load_scale_up_table(SCALE_UP_RESULTS / "Scale_up_PORTABLE_MS")
 
     line_dir = output_dir / "scale_up_lines"
     stacked_dir = output_dir / "stacked_scale_up"
@@ -359,6 +368,7 @@ def plot_scale_up_regions(
             df_stock,
             df_coalbag,
             df_man,
+            df_portable,
             region,
             stacked_dir / f"{slug}_stacked_cadr.png",
             show_start=False,
@@ -370,6 +380,7 @@ def plot_scale_up_regions(
             df_stock,
             df_coalbag,
             df_man,
+            df_portable,
             region,
             stacked_lines_dir / f"{slug}_stacked_lines_cadr.png",
             show_start=False,
@@ -389,6 +400,7 @@ def plot_scale_up_regions(
                 df_stock,
                 df_coalbag,
                 df_man,
+                df_portable,
                 region,
                 stacked_dir / f"{slug}_stacked_cadr_first_20_weeks.png",
                 show_start=True,
@@ -399,6 +411,7 @@ def plot_scale_up_regions(
                 df_stock,
                 df_coalbag,
                 df_man,
+                df_portable,
                 region,
                 stacked_lines_dir / f"{slug}_stacked_lines_cadr_first_20_weeks.png",
                 show_start=True,

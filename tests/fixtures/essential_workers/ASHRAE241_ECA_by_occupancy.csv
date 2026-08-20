@@ -1,0 +1,26 @@
+occupancy_group,occupancy_category,baseline_outdoor_airflow_ls_per_person,eca_ls_per_person,relative_risk,source
+Correctional facilities,Cell,4.9,15,0.44,Jones et al. 2025 Table 4 / ASHRAE 241-2023 Table 5-1
+Correctional facilities,Dayroom,3.5,20,0.35,Jones et al. 2025 Table 4 / ASHRAE 241-2023 Table 5-1
+Commercial/Retail,Food and beverage facilities,5.6,30,0.24,Jones et al. 2025 Table 4 / ASHRAE 241-2023 Table 5-1
+Commercial/Retail,Gym,11,40,0.32,Jones et al. 2025 Table 4 / ASHRAE 241-2023 Table 5-1
+Commercial/Retail,Office,8.5,15,0.78,Jones et al. 2025 Table 4 / ASHRAE 241-2023 Table 5-1
+Commercial/Retail,Retail,7.8,20,0.61,Jones et al. 2025 Table 4 / ASHRAE 241-2023 Table 5-1
+Commercial/Retail,Transportation waiting,6.8,30,0.60,Jones et al. 2025 Table 4 / ASHRAE 241-2023 Table 5-1
+Educational facilities,Classroom,7.4,20,0.45,Jones et al. 2025 Table 4 / ASHRAE 241-2023 Table 5-1
+Educational facilities,Lecture hall,2.9,25,0.22,Jones et al. 2025 Table 4 / ASHRAE 241-2023 Table 5-1
+Industrial,Manufacturing,9.3,25,0.78,Jones et al. 2025 Table 4 / ASHRAE 241-2023 Table 5-1
+Industrial,"Sorting, packing, light assembly",11,10,1.0,Jones et al. 2025 Table 4 / ASHRAE 241-2023 Table 5-1
+Industrial,Warehouse,6.5,10,0.87,Jones et al. 2025 Table 4 / ASHRAE 241-2023 Table 5-1
+Health care,Exam room,7.5,20,0.47,Jones et al. 2025 Table 4 / ASHRAE 241-2023 Table 5-1
+Health care,Group treatment area,7.5,35,0.29,Jones et al. 2025 Table 4 / ASHRAE 241-2023 Table 5-1
+Health care,Patient room,15,35,0.53,Jones et al. 2025 Table 4 / ASHRAE 241-2023 Table 5-1
+Health care,Resident room,15,25,0.69,Jones et al. 2025 Table 4 / ASHRAE 241-2023 Table 5-1
+Health care,Waiting room,5.0,45,0.16,Jones et al. 2025 Table 4 / ASHRAE 241-2023 Table 5-1
+Public assembly/Sports/Entertainment,Auditorium,3.5,25,0.36,Jones et al. 2025 Table 4 / ASHRAE 241-2023 Table 5-1
+Public assembly/Sports/Entertainment,Place of religious worship,2.8,25,0.23,Jones et al. 2025 Table 4 / ASHRAE 241-2023 Table 5-1
+Public assembly/Sports/Entertainment,Museum,4.6,30,0.31,Jones et al. 2025 Table 4 / ASHRAE 241-2023 Table 5-1
+Public assembly/Sports/Entertainment,Convention,4.6,30,0.31,Jones et al. 2025 Table 4 / ASHRAE 241-2023 Table 5-1
+Public assembly/Sports/Entertainment,Spectator area,4.7,25,0.52,Jones et al. 2025 Table 4 / ASHRAE 241-2023 Table 5-1
+Public assembly/Sports/Entertainment,Lobbies,3.5,25,0.34,Jones et al. 2025 Table 4 / ASHRAE 241-2023 Table 5-1
+Residential,Common space,1.0,25,0.26,Jones et al. 2025 Table 4 / ASHRAE 241-2023 Table 5-1
+Residential,Dwelling unit,6.8,15,0.80,Jones et al. 2025 Table 4 / ASHRAE 241-2023 Table 5-1

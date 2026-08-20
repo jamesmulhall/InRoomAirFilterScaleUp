@@ -26,6 +26,7 @@ def _make_country(
     repur_cadr: float = 100.0,
     stock_cadr: float = 500.0,
     coal_cadr: float = 200.0,
+    portable_cadr: float = 80.0,
     mdd: int = 1,
     repur_delay: int = 12,
     stock_delay: int = 2,
@@ -45,6 +46,7 @@ def _make_country(
             "CADR: CR Box Repurposing": repur_cadr,
             "CADR: CR Box Initial Stock": stock_cadr,
             "CADR: Coal Baghouse": coal_cadr,
+            "CADR: Portable Air Cleaner Weekly Production": portable_cadr,
             "CR Box Manufacturing Distribution Delay": mdd,
             "Repurposing Delay": repur_delay,
             "Initial Stock Delay": stock_delay,
@@ -113,6 +115,25 @@ def test_scale_up_coalbag_deposits_at_coalbaghouse_delay():
         assert data[i] == 10.0
 
 
+def test_scale_up_portable_matches_cr_man_ramp():
+    c = _make_country("X", big_6=True, portable_cadr=100.0, mdd=1)
+    data = cc.scale_up_PORTABLE(c, weeks=10)
+    increments = [data[i] - data[i - 1] for i in range(1, 11)]
+    expected_ramp = [(0.7 + 0.05 * (i - 1)) * 100.0 for i in range(1, 7)]
+    for inc, exp in zip(increments[:6], expected_ramp):
+        assert inc == pytest.approx(exp)
+    for inc in increments[6:]:
+        assert inc == pytest.approx(100.0)
+
+
+def test_scale_up_portable_non_big6_flat_after_delay():
+    c = _make_country("X", big_6=False, portable_cadr=50.0, mdd=3)
+    data = cc.scale_up_PORTABLE(c, weeks=8)
+    for i in range(0, 3):
+        assert data[i] == 0
+    for i in range(3, 9):
+        assert data[i] - data[i - 1] == pytest.approx(50.0)
+
 def test_scale_up_cr_repur_matches_repur_list():
     c = _make_country("X", repur_delay=12, repur_cadr=1000.0)
     data = cc.scale_up_CR_REPUR(c, weeks=13)
@@ -125,22 +146,27 @@ def test_scale_up_cr_repur_matches_repur_list():
 
 
 # ---------------------------------------------------------------------------
-# scale_up_MAIN == sum of the four streams
+# scale_up_MAIN == sum of the five streams
 # ---------------------------------------------------------------------------
 
 
 @pytest.mark.parametrize("big_6", [True, False])
 def test_scale_up_main_equals_sum_of_streams(big_6):
     c = _make_country("X", big_6=big_6)
-    weeks = 20
+    weeks = 25
     main = cc.scale_up_MAIN(c, weeks)
     cr_man = cc.scale_up_CR_MAN(c, weeks)
     cr_repur = cc.scale_up_CR_REPUR(c, weeks)
     cr_stock = cc.scale_up_CR_STOCK(c, weeks)
     coalbag = cc.scale_up_COALBAG(c, weeks)
+    portable = cc.scale_up_PORTABLE(c, weeks)
     for t in range(weeks + 1):
         assert main[t] == pytest.approx(
-            cr_man[t] + cr_repur[t] + cr_stock[t] + coalbag[t]
+            cr_man[t]
+            + cr_repur[t]
+            + cr_stock[t]
+            + coalbag[t]
+            + portable[t]
         )
 
 

@@ -875,18 +875,18 @@ def build_dual_validation_merged(
 class WorkerDicts:
     """Bundle of per-country worker counts and percentages."""
 
-    iew_ilo: Dict[str, float] = field(default_factory=dict)
-    ew_ilo: Dict[str, float] = field(default_factory=dict)
-    ivw_poll: Dict[str, float] = field(default_factory=dict)
-    vw_poll: Dict[str, float] = field(default_factory=dict)
-    af_indoor_essential: Dict[str, float] = field(default_factory=dict)
-    af_essential: Dict[str, float] = field(default_factory=dict)
-    iew_pc: Dict[str, float] = field(default_factory=dict)
-    ew_pc: Dict[str, float] = field(default_factory=dict)
-    ivw_pc: Dict[str, float] = field(default_factory=dict)
-    vw_pc: Dict[str, float] = field(default_factory=dict)
-    af_indoor_essential_pc: Dict[str, float] = field(default_factory=dict)
-    af_essential_pc: Dict[str, float] = field(default_factory=dict)
+    iew_ilo: Dict[str, float] = field(default_factory=dict) # indoor essential workers (ilo)
+    ew_ilo: Dict[str, float] = field(default_factory=dict) # essential workers (ilo)
+    ivw_poll: Dict[str, float] = field(default_factory=dict) # indoor vital workers (poll)
+    vw_poll: Dict[str, float] = field(default_factory=dict) # vital workers (poll)
+    af_indoor_essential: Dict[str, float] = field(default_factory=dict) # armed forces (indoor essential)
+    af_essential: Dict[str, float] = field(default_factory=dict) # armed forces (essential)
+    iew_pc: Dict[str, float] = field(default_factory=dict) # indoor essential workers (percentage)
+    ew_pc: Dict[str, float] = field(default_factory=dict) # essential workers (percentage)
+    ivw_pc: Dict[str, float] = field(default_factory=dict) # indoor vital workers (percentage)
+    vw_pc: Dict[str, float] = field(default_factory=dict) # vital workers (percentage)
+    af_indoor_essential_pc: Dict[str, float] = field(default_factory=dict) # armed forces (indoor essential) (percentage)
+    af_essential_pc: Dict[str, float] = field(default_factory=dict) # armed forces (essential) (percentage)
 
 
 def compute_worker_dicts(
@@ -1257,6 +1257,172 @@ def compute_absolute_counts(
     return df
 
 
+ASHRAE_SCALE_FACTOR = 5.7
+SCALED_ECA_COL = "Scaled ECA (L/s/person)"
+INDOOR_ESSENTIAL_CADR_COL = "Indoor Essential CADR Requirement (L/s)"
+INDOOR_VITAL_CADR_COL = "Indoor Vital CADR Requirement (L/s)"
+SCALED_ECA_ESSENTIAL_COL = "Scaled ECA Essential (L/s/person)"
+SCALED_ECA_VITAL_COL = "Scaled ECA Vital (L/s/person)"
+_CADR_BACKFILL_COLUMNS = (
+    SCALED_ECA_ESSENTIAL_COL,
+    SCALED_ECA_VITAL_COL,
+    INDOOR_ESSENTIAL_CADR_COL,
+    INDOOR_VITAL_CADR_COL,
+)
+
+
+def compute_group_workers_and_cadr(
+    data_dir: Path,
+    lf_df: pd.DataFrame,
+    employment_by_iso: Dict[str, Dict[str, float]],
+    weights_template: pd.DataFrame,
+    overlaps_by_country: Dict[str, Dict[str, float]],
+    *,
+    scale_factor: float = ASHRAE_SCALE_FACTOR,
+    lf_col: str = "Labour Force (2024)",
+) -> pd.DataFrame:
+    """Per-country occupational-group worker counts and ASHRAE-241 CADR demand."""
+    data_dir = Path(data_dir)
+    ashrae = pd.read_csv(data_dir / "ASHRAE241_ECA_by_occupancy.csv")
+    mapping = pd.read_csv(data_dir / "ASHRAE241_group_mapping.csv")
+    mapped = mapping.merge(
+        ashrae,
+        on=["occupancy_group", "occupancy_category"],
+        how="left",
+    )
+    missing_groups = set(GROUP_OVERLAP) - set(mapped["occupational_group"])
+    if missing_groups:
+        raise ValueError(f"Missing ASHRAE mapping for groups: {sorted(missing_groups)}")
+    if mapped["eca_ls_per_person"].isna().any():
+        raise ValueError("Group mapping references unknown ASHRAE occupancy categories")
+
+    group_meta = mapped.set_index("occupational_group")
+    rows: list[dict[str, Any]] = []
+
+    for _, lf_row in lf_df.iterrows():
+        country = lf_row["Country Name"]
+        emp = employment_for_country(country, employment_by_iso)
+        if not emp:
+            continue
+        tot = emp.get("Tot")
+        lf = lf_row.get(lf_col)
+        if (
+            tot is None
+            or not pd.notna(tot)
+            or tot <= 0
+            or lf is None
+            or not pd.notna(lf)
+            or lf <= 0
+        ):
+            continue
+
+        overlaps = overlaps_by_country.get(country, GROUP_OVERLAP)
+        weights = apply_group_overlaps(weights_template, overlaps)
+        poll_w = weights["ISCO_08_PollWeights"].to_dict()
+        ilo_w = weights["ISCO_08_ILOWeights"].to_dict()
+        code_to_group = weights["Group"].to_dict()
+
+        group_iew = {g: 0.0 for g in GROUP_OVERLAP}
+        group_ivw = {g: 0.0 for g in GROUP_OVERLAP}
+        coded_emp = 0.0
+        iew_coded = ivw_coded = 0.0
+
+        for code, employment in emp.items():
+            code_str = str(code).strip()
+            if not pd.notna(employment) or code_str in ("Tot", "Not"):
+                continue
+            coded_emp += employment
+            group = code_to_group.get(code_str)
+            if group not in GROUP_OVERLAP:
+                continue
+            if code_str in poll_w:
+                w = poll_w[code_str]
+                contrib = employment * w if pd.notna(w) else 0.0
+                group_ivw[group] += contrib
+                ivw_coded += contrib
+            if code_str in ilo_w:
+                w = ilo_w[code_str]
+                contrib = employment * w if pd.notna(w) else 0.0
+                group_iew[group] += contrib
+                iew_coded += contrib
+
+        nec_emp = emp.get("Not")
+        if (
+            nec_emp is not None
+            and pd.notna(nec_emp)
+            and nec_emp > 0
+            and coded_emp > 0
+        ):
+            avg_iew = iew_coded / coded_emp
+            avg_ivw = ivw_coded / coded_emp
+            for group in GROUP_OVERLAP:
+                if iew_coded > 0:
+                    group_iew[group] += (
+                        nec_emp * avg_iew * (group_iew[group] / iew_coded)
+                    )
+                if ivw_coded > 0:
+                    group_ivw[group] += (
+                        nec_emp * avg_ivw * (group_ivw[group] / ivw_coded)
+                    )
+
+        for group in GROUP_OVERLAP:
+            meta = group_meta.loc[group]
+            scaled_eca = float(meta["eca_ls_per_person"]) * scale_factor
+            indoor_essential = group_iew[group] / tot * float(lf)
+            indoor_vital = group_ivw[group] / tot * float(lf)
+            rows.append(
+                {
+                    "Country Name": country,
+                    "Country Code": lf_row["Country Code"],
+                    "Region": lf_row["Region"],
+                    "occupational_group": group,
+                    "occupancy_group": meta["occupancy_group"],
+                    "occupancy_category": meta["occupancy_category"],
+                    "Indoor Essential Workers": indoor_essential,
+                    "Indoor Vital Workers": indoor_vital,
+                    SCALED_ECA_COL: scaled_eca,
+                    INDOOR_ESSENTIAL_CADR_COL: indoor_essential * scaled_eca,
+                    INDOOR_VITAL_CADR_COL: indoor_vital * scaled_eca,
+                }
+            )
+
+    return pd.DataFrame(rows)
+
+
+def attach_country_cadr_from_groups(
+    lf_df: pd.DataFrame, group_df: pd.DataFrame
+) -> pd.DataFrame:
+    """Attach country-level CADR totals and effective scaled ECA from group rows."""
+    df = lf_df.copy()
+    if group_df.empty:
+        for col in _CADR_BACKFILL_COLUMNS:
+            df[col] = np.nan
+        return df
+
+    agg = group_df.groupby("Country Code", as_index=False).agg(
+        {
+            INDOOR_ESSENTIAL_CADR_COL: "sum",
+            INDOOR_VITAL_CADR_COL: "sum",
+        }
+    )
+    df = df.drop(columns=list(_CADR_BACKFILL_COLUMNS), errors="ignore")
+    df = df.merge(agg, on="Country Code", how="left")
+
+    essential_workers = df["Indoor Essential Workers"]
+    vital_workers = df["Indoor Vital Workers"]
+    df[SCALED_ECA_ESSENTIAL_COL] = np.where(
+        essential_workers > 0,
+        df[INDOOR_ESSENTIAL_CADR_COL] / essential_workers,
+        np.nan,
+    )
+    df[SCALED_ECA_VITAL_COL] = np.where(
+        vital_workers > 0,
+        df[INDOOR_VITAL_CADR_COL] / vital_workers,
+        np.nan,
+    )
+    return df
+
+
 def compute_global_worker_summary(
     lf_df: pd.DataFrame, lf_col: str = "Labour Force (2024)"
 ) -> pd.DataFrame:
@@ -1322,6 +1488,8 @@ _REGION_SUM_COLUMNS = [
     "Vital Workers",
     "Armed Forces (Indoor Essential)",
     "Armed Forces (Essential)",
+    INDOOR_ESSENTIAL_CADR_COL,
+    INDOOR_VITAL_CADR_COL,
 ]
 
 
@@ -1332,6 +1500,16 @@ def aggregate_by_region(
     regional = lf_df.groupby("Region")[_REGION_SUM_COLUMNS].sum().reset_index()
     for count_col, pct_col in _COUNT_COLUMNS:
         regional[pct_col] = regional[count_col] / regional[lf_col]
+    regional[SCALED_ECA_ESSENTIAL_COL] = np.where(
+        regional["Indoor Essential Workers"] > 0,
+        regional[INDOOR_ESSENTIAL_CADR_COL] / regional["Indoor Essential Workers"],
+        np.nan,
+    )
+    regional[SCALED_ECA_VITAL_COL] = np.where(
+        regional["Indoor Vital Workers"] > 0,
+        regional[INDOOR_VITAL_CADR_COL] / regional["Indoor Vital Workers"],
+        np.nan,
+    )
     return regional
 
 
@@ -1427,6 +1605,7 @@ class EssentialWorkerOutputs:
     workers: WorkerDicts
     workers_model: WorkerDicts
     labour_force_df: pd.DataFrame
+    group_df: pd.DataFrame
     regional_df: pd.DataFrame
     onsite_housing_df: pd.DataFrame
     ilo_pct_df: pd.DataFrame
@@ -1567,6 +1746,16 @@ def run_pipeline(
     )
     lf_df = compute_absolute_counts(lf_df)
 
+    group_df = compute_group_workers_and_cadr(
+        data_dir,
+        lf_df,
+        employment_by_iso,
+        weights_template,
+        overlap_cal.overlaps_by_country,
+    )
+    lf_df = attach_country_cadr_from_groups(lf_df, group_df)
+    lf_df = backfill_neighbours(lf_df, cols=_CADR_BACKFILL_COLUMNS)
+
     regional_df = aggregate_by_region(lf_df)
 
     validation = validate_against_ilo(
@@ -1591,6 +1780,7 @@ def run_pipeline(
         results_dir = Path(results_dir)
         results_dir.mkdir(parents=True, exist_ok=True)
         lf_df.to_csv(results_dir / "EssentialWorkersByCountry.csv", index=False)
+        group_df.to_csv(results_dir / "EssentialWorkersByGroup.csv", index=False)
         regional_df.to_csv(results_dir / "EssentialWorkersByRegion.csv", index=False)
         val_out_cols = [
             "Country Name",
@@ -1626,6 +1816,7 @@ def run_pipeline(
         workers=workers,
         workers_model=workers_model,
         labour_force_df=lf_df,
+        group_df=group_df,
         regional_df=regional_df,
         onsite_housing_df=onsite_housing_df,
         ilo_pct_df=ilo_pct_df,

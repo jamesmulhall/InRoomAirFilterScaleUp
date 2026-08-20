@@ -1,0 +1,10 @@
+occupational_group,occupancy_group,occupancy_category
+Food,Industrial,Manufacturing
+Health,Health care,Patient room
+Retail,Commercial/Retail,Retail
+Security,Commercial/Retail,Office
+Transport,Commercial/Retail,Transportation waiting
+Manual,Industrial,Manufacturing
+Cleaning,Commercial/Retail,Office
+Tech,Commercial/Retail,Office
+ArmedForces,Correctional facilities,Dayroom

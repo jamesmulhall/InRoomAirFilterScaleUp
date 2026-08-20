@@ -12,6 +12,7 @@ file_path_cr_man    = "../results/scale_up/Scale_up_CR_MAN_MS.pkl"
 file_path_cr_repur  = "../results/scale_up/Scale_up_CR_REPUR_MS.pkl"
 file_path_coalbag   = "../results/scale_up/Scale_up_COALBAG_MS.pkl"
 file_path_cr_stock  = "../results/scale_up/Scale_up_CR_STOCK.pkl"
+file_path_portable = "../results/scale_up/Scale_up_PORTABLE_MS.pkl"
 file_path_essential_workers_country = "../results/essential_workers/EssentialWorkersByCountry.csv"  # (not used in bundle, but kept for parity)
 
 # --- add these 7 lines right after your file_path_* block ---
@@ -26,6 +27,7 @@ file_path_cr_man     = _rp(file_path_cr_man)
 file_path_cr_repur   = _rp(file_path_cr_repur)
 file_path_coalbag    = _rp(file_path_coalbag)
 file_path_cr_stock   = _rp(file_path_cr_stock)
+file_path_portable = _rp(file_path_portable)
 file_path_essential_workers_country= _rp(file_path_essential_workers_country)
 
 
@@ -162,9 +164,18 @@ def main():
     df_cr_repur, wk_repur   = nominal_df_from_pickle(file_path_cr_repur)
     df_coalbag,  wk_coal    = nominal_df_from_pickle(file_path_coalbag)
     df_cr_stock, wk_stock   = nominal_df_from_pickle(file_path_cr_stock)
+    df_portable, wk_port  = nominal_df_from_pickle(file_path_portable)
 
     # weeks = union length; JS will just use 1..max
-    max_weeks = max(len(wk_main), len(wk_percent), len(wk_man), len(wk_repur), len(wk_coal), len(wk_stock))
+    max_weeks = max(
+        len(wk_main),
+        len(wk_percent),
+        len(wk_man),
+        len(wk_repur),
+        len(wk_coal),
+        len(wk_stock),
+        len(wk_port),
+    )
     weeks = [str(i) for i in range(1, max_weeks + 1)]
     print(f"[2/6] Weeks detected: 1..{max_weeks}")
 
@@ -179,6 +190,7 @@ def main():
         "CR Box Repurposing":   df_to_weekmap(df_cr_repur),
         "Coalbaghouse":         df_to_weekmap(df_coalbag),
         "CR Box Stock":         df_to_weekmap(df_cr_stock),
+        "Portable Air Cleaners": df_to_weekmap(df_portable),
     }
 
     print("[5/6] Extracting indoor-vital per-person bounds (lower/upper) from main…")

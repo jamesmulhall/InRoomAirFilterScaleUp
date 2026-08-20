@@ -166,6 +166,8 @@ def plot_world_choropleth(
         "cmap": cmap,
         "vmin": vmin,
         "vmax": vmax,
+        "edgecolor": "dimgray",
+        "linewidth": 0.1,
         "legend_kwds": {
             "label": legend_label or value_col,
             "orientation": "horizontal",
