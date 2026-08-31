@@ -1,4 +1,4 @@
-"""Distil mini fixture data from the real ``data/`` and ``results/`` folders.
+"""Distil mini fixture data for the essential worker pipeline from ``data/``.
 
 Run with::
 
@@ -8,22 +8,15 @@ The output is committed to git so the test suite can run without the
 real data being present. Re-run this whenever the real source files
 change.
 """
+
 from __future__ import annotations
 
 from pathlib import Path
 
 import pandas as pd
 
-
 # A small but representative subset of countries chosen to span every
 # UN region we care about and to include both Big_6 and non-Big_6 cases.
-SUBSET_ISO3 = [
-    "USA", "CAN", "GBR", "DEU", "FRA",
-    "JPN", "CHN", "IND", "BRA", "AUS",
-    "NGA", "EGY", "ZAF", "MEX", "ARG",
-    "IDN", "RUS", "TUR", "KEN",
-    "NZL",
-]
 SUBSET_LF_COUNTRY_NAMES = [
     "United States",
     "Canada",
@@ -73,11 +66,8 @@ SUBSET_ILO_REF_AREAS = [
 def main() -> None:
     repo = Path(__file__).resolve().parents[2]
     ew_data = repo / "data" / "essential_workers"
-    su_data = repo / "data" / "scale_up"
     out_ew = Path(__file__).resolve().parent / "essential_workers"
-    out_su = Path(__file__).resolve().parent / "scale_up"
     out_ew.mkdir(parents=True, exist_ok=True)
-    out_su.mkdir(parents=True, exist_ok=True)
 
     for name in (
         "ISCO-08 OpinionPollCensus.xlsx",
@@ -89,21 +79,6 @@ def main() -> None:
         dst = out_ew / src.name
         dst.write_bytes(src.read_bytes())
 
-    for name in ("BaghouseAirflow.csv", "CR_Box_Countries_MS.csv"):
-        src = su_data / name
-        dst = out_su / src.name
-        dst.write_bytes(src.read_bytes())
-
-    country_list = pd.read_csv(
-        su_data / "STANDARD_COUNTRY_LIST.csv", encoding="cp1252"
-    )
-    country_list = country_list[country_list["ISO-3"].isin(SUBSET_ISO3)]
-    country_list.to_csv(
-        out_su / "STANDARD_COUNTRY_LIST.csv", index=False, encoding="cp1252"
-    )
-
-    lf = pd.read_excel(ew_data / "LFData_WB_plus.xlsx", usecols=[0, 1, 3])
-    lf = lf[lf["Country Name"].isin(SUBSET_LF_COUNTRY_NAMES)]
     full_lf = pd.read_excel(ew_data / "LFData_WB_plus.xlsx")
     full_lf = full_lf[full_lf["Country Name"].isin(SUBSET_LF_COUNTRY_NAMES)]
     full_lf.to_excel(out_ew / "LFData_WB_plus.xlsx", index=False)
@@ -125,11 +100,9 @@ def main() -> None:
         pd.DataFrame([[""] * ilo_pct.shape[1]], columns=ilo_pct.columns).to_excel(
             writer, sheet_name="Sheet1", index=False, header=False
         )
-        ilo_pct_filt.to_excel(
-            writer, sheet_name="Sheet1", index=False, startrow=1
-        )
+        ilo_pct_filt.to_excel(writer, sheet_name="Sheet1", index=False, startrow=1)
 
-    print(f"Wrote {len(SUBSET_ISO3)}-country fixtures into {out_ew} and {out_su}")
+    print(f"Wrote {len(SUBSET_LF_COUNTRY_NAMES)}-country fixtures into {out_ew}")
 
 
 if __name__ == "__main__":

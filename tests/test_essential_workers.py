@@ -19,7 +19,6 @@ import pytest
 
 import essential_workers as ew
 
-
 # ---------------------------------------------------------------------------
 # Indoor context
 # ---------------------------------------------------------------------------
@@ -127,7 +126,9 @@ def test_farming_carry_over_61_equals_62(data_dir):
     # Code 61 should pick up code 62's Census/Context (the L4 inputs for 61
     # are missing in the ONET data, so the carry-over fills the gap).
     assert w.at["61", "Vital Weight POLL"] == w.at["62", "Vital Weight POLL"]
-    assert w.at["61", ew.INDOORS_CONTEXT_COLUMN] == w.at["62", ew.INDOORS_CONTEXT_COLUMN]
+    assert (
+        w.at["61", ew.INDOORS_CONTEXT_COLUMN] == w.at["62", ew.INDOORS_CONTEXT_COLUMN]
+    )
 
 
 def test_non_ilo_poll_codes_have_zero_vital_poll(data_dir):
@@ -171,7 +172,9 @@ def test_aggregator_choice_affects_indoor_only(data_dir):
         w_last["ISCO_08_ILOWeights_Total"],
         check_names=False,
     )
-    assert not w_mean[ew.INDOORS_CONTEXT_COLUMN].equals(w_last[ew.INDOORS_CONTEXT_COLUMN])
+    assert not w_mean[ew.INDOORS_CONTEXT_COLUMN].equals(
+        w_last[ew.INDOORS_CONTEXT_COLUMN]
+    )
 
 
 def test_invalid_aggregator_raises(data_dir):
@@ -575,6 +578,16 @@ def test_compute_global_worker_summary_outdoor_is_residual(ew_outputs):
     assert summary.loc["Vital workers", "% of Labour Force"] == pytest.approx(
         ew_outputs.validation.global_pct_vital, rel=1e-9
     )
+    assert summary.loc["Essential workers", "Country min %"] == pytest.approx(
+        (lf["%Essential Workers"] * 100.0).min(skipna=True)
+    )
+    assert summary.loc["Essential workers", "Country max %"] == pytest.approx(
+        (lf["%Essential Workers"] * 100.0).max(skipna=True)
+    )
+    assert (
+        summary.loc["Essential workers", "Country min %"]
+        <= summary.loc["Essential workers", "Country max %"]
+    )
 
 
 def test_fill_missing_labour_force_from_ilo_tot():
@@ -740,9 +753,7 @@ def test_backfill_calibrated_overlaps_from_neighbours():
     for g in ew.CALIBRATABLE_GROUPS:
         if ew.overlap_column(g) not in df.columns:
             df[ew.overlap_column(g)] = 0.5
-    out = ew.backfill_calibrated_overlaps(
-        df, similar_iso3={"CHN": ["IND", "VNM"]}
-    )
+    out = ew.backfill_calibrated_overlaps(df, similar_iso3={"CHN": ["IND", "VNM"]})
     assert out.at[2, ew.overlap_column("Food")] == pytest.approx(0.91)
     assert out.at[2, "overlap_source"] == ew.OVERLAP_SOURCE_NEIGHBOUR
 
@@ -775,16 +786,17 @@ def test_no_country_deviates_more_than_10pp(ew_outputs):
     """Feasible ILO-calibrated countries within 10pp of published %essential."""
     subset = _feasible_ilo_validation(ew_outputs)
     bad = subset.loc[subset["Delta (pp)"].abs() > 10.0]
-    assert bad.empty, (
-        "Feasible calibrated %Essential deviates from ILO by more than 10pp:\n"
-        + bad[
-            [
-                "Country Name",
-                "Our %Essential (calibrated)",
-                "ILO %essential (published)",
-                "Delta (pp)",
-            ]
-        ].to_string(index=False)
+    assert (
+        bad.empty
+    ), "Feasible calibrated %Essential deviates from ILO by more than 10pp:\n" + bad[
+        [
+            "Country Name",
+            "Our %Essential (calibrated)",
+            "ILO %essential (published)",
+            "Delta (pp)",
+        ]
+    ].to_string(
+        index=False
     )
 
 
@@ -801,9 +813,9 @@ def test_calibrated_essential_matches_ilo_where_employment(ew_outputs):
     subset = _feasible_ilo_validation(ew_outputs)
     assert len(subset) > 0
     max_delta = subset["Delta (pp)"].abs().max()
-    assert max_delta <= ew.ESSENTIAL_PCT_TOLERANCE_PP + 1e-9, (
-        f"Max feasible calibrated |Delta| is {max_delta:.4f}pp"
-    )
+    assert (
+        max_delta <= ew.ESSENTIAL_PCT_TOLERANCE_PP + 1e-9
+    ), f"Max feasible calibrated |Delta| is {max_delta:.4f}pp"
 
 
 @pytest.mark.full_data
@@ -923,9 +935,7 @@ def test_group_and_country_cadr_requirements(data_dir):
         health[ew.INDOOR_ESSENTIAL_CADR_COL] + retail[ew.INDOOR_ESSENTIAL_CADR_COL]
     )
     total_essential = 1_000_000.0
-    expected_eca = (
-        600_000 * scaled_health + 400_000 * scaled_retail
-    ) / total_essential
+    expected_eca = (600_000 * scaled_health + 400_000 * scaled_retail) / total_essential
     assert country[ew.SCALED_ECA_ESSENTIAL_COL].iloc[0] == pytest.approx(expected_eca)
 
 
@@ -942,3 +952,187 @@ def test_pipeline_includes_group_and_cadr_outputs(ew_outputs):
     ):
         assert col in lf.columns
     assert lf[ew.INDOOR_ESSENTIAL_CADR_COL].notna().any()
+
+
+def test_food_share_of_workforce_ratios():
+    group_df = pd.DataFrame(
+        [
+            {
+                "Country Name": "A",
+                "Country Code": "AAA",
+                "Region": "R",
+                "occupational_group": "Food",
+                "Essential Workers": 80.0,
+                "Vital Workers": 70.0,
+                "Indoor Essential Workers": 20.0,
+                "Indoor Vital Workers": 10.0,
+            },
+            {
+                "Country Name": "A",
+                "Country Code": "AAA",
+                "Region": "R",
+                "occupational_group": "Health",
+                "Essential Workers": 20.0,
+                "Vital Workers": 30.0,
+                "Indoor Essential Workers": 20.0,
+                "Indoor Vital Workers": 30.0,
+            },
+        ]
+    )
+    food = ew.food_share_of_workforce(group_df)
+    assert food["Food % of Essential Workers"].iloc[0] == pytest.approx(0.8)
+    assert food["Food % of Vital Workers"].iloc[0] == pytest.approx(0.7)
+    assert food["Food % of Indoor Essential Workers"].iloc[0] == pytest.approx(0.5)
+    assert food["Food % of Indoor Vital Workers"].iloc[0] == pytest.approx(0.25)
+
+
+def test_summarize_group_composition_global_and_country():
+    group_df = pd.DataFrame(
+        [
+            {
+                "Country Name": "A",
+                "Country Code": "AAA",
+                "Region": "Northern Europe",
+                "occupational_group": "Food",
+                "Essential Workers": 80.0,
+                "Vital Workers": 40.0,
+                "Indoor Essential Workers": 10.0,
+                "Indoor Vital Workers": 5.0,
+            },
+            {
+                "Country Name": "A",
+                "Country Code": "AAA",
+                "Region": "Northern Europe",
+                "occupational_group": "Health",
+                "Essential Workers": 20.0,
+                "Vital Workers": 60.0,
+                "Indoor Essential Workers": 30.0,
+                "Indoor Vital Workers": 45.0,
+            },
+            {
+                "Country Name": "B",
+                "Country Code": "BBB",
+                "Region": "Northern Europe",
+                "occupational_group": "Food",
+                "Essential Workers": 20.0,
+                "Vital Workers": 10.0,
+                "Indoor Essential Workers": 5.0,
+                "Indoor Vital Workers": 2.0,
+            },
+            {
+                "Country Name": "B",
+                "Country Code": "BBB",
+                "Region": "Northern Europe",
+                "occupational_group": "Health",
+                "Essential Workers": 80.0,
+                "Vital Workers": 90.0,
+                "Indoor Essential Workers": 70.0,
+                "Indoor Vital Workers": 80.0,
+            },
+        ]
+    )
+    global_comp = ew.summarize_group_composition(group_df)
+    food = global_comp.loc[global_comp["occupational_group"] == "Food"].iloc[0]
+    # Worker-weighted: Food essential = (80+20)/(100+100) = 0.5
+    assert food["% of Essential Workers"] == pytest.approx(0.5)
+    assert food["% of Vital Workers"] == pytest.approx(0.25)
+    assert global_comp["% of Essential Workers"].sum() == pytest.approx(1.0)
+
+    country = ew.summarize_group_composition(group_df, by="Country")
+    a_food = country.loc[
+        (country["Country Code"] == "AAA") & (country["occupational_group"] == "Food")
+    ].iloc[0]
+    assert a_food["% of Essential Workers"] == pytest.approx(0.8)
+
+    region = ew.summarize_group_composition(group_df, by="Region")
+    assert region["% of Essential Workers"].sum() == pytest.approx(1.0)
+
+
+def test_summarize_worker_shares_vs_gdp_negative_association():
+    # Higher GDP → lower essential share (synthetic).
+    lf_df = pd.DataFrame(
+        {
+            "Country Name": ["Poor", "Mid", "Rich"],
+            "Country Code": ["POO", "MID", "RIC"],
+            "Region": ["R", "R", "R"],
+            "%Essential Workers": [0.7, 0.5, 0.3],
+            "%Indoor Essential Workers": [0.25, 0.22, 0.20],
+            "%Vital Workers": [0.6, 0.4, 0.2],
+            "%Indoor Vital Workers": [0.18, 0.16, 0.14],
+        }
+    )
+    group_df = pd.DataFrame(
+        [
+            {
+                "Country Name": "Poor",
+                "Country Code": "POO",
+                "Region": "R",
+                "occupational_group": "Food",
+                "Essential Workers": 90.0,
+                "Vital Workers": 90.0,
+                "Indoor Essential Workers": 10.0,
+                "Indoor Vital Workers": 10.0,
+            },
+            {
+                "Country Name": "Poor",
+                "Country Code": "POO",
+                "Region": "R",
+                "occupational_group": "Health",
+                "Essential Workers": 10.0,
+                "Vital Workers": 10.0,
+                "Indoor Essential Workers": 10.0,
+                "Indoor Vital Workers": 10.0,
+            },
+            {
+                "Country Name": "Rich",
+                "Country Code": "RIC",
+                "Region": "R",
+                "occupational_group": "Food",
+                "Essential Workers": 10.0,
+                "Vital Workers": 10.0,
+                "Indoor Essential Workers": 5.0,
+                "Indoor Vital Workers": 5.0,
+            },
+            {
+                "Country Name": "Rich",
+                "Country Code": "RIC",
+                "Region": "R",
+                "occupational_group": "Health",
+                "Essential Workers": 90.0,
+                "Vital Workers": 90.0,
+                "Indoor Essential Workers": 90.0,
+                "Indoor Vital Workers": 90.0,
+            },
+            {
+                "Country Name": "Mid",
+                "Country Code": "MID",
+                "Region": "R",
+                "occupational_group": "Food",
+                "Essential Workers": 50.0,
+                "Vital Workers": 50.0,
+                "Indoor Essential Workers": 20.0,
+                "Indoor Vital Workers": 20.0,
+            },
+            {
+                "Country Name": "Mid",
+                "Country Code": "MID",
+                "Region": "R",
+                "occupational_group": "Health",
+                "Essential Workers": 50.0,
+                "Vital Workers": 50.0,
+                "Indoor Essential Workers": 50.0,
+                "Indoor Vital Workers": 50.0,
+            },
+        ]
+    )
+    gdp_df = pd.DataFrame(
+        {
+            "Country Code": ["POO", "MID", "RIC"],
+            ew.GDP_PPP_COL: [2000.0, 10000.0, 50000.0],
+        }
+    )
+    _, summary = ew.summarize_worker_shares_vs_gdp(lf_df, group_df, gdp_df)
+    ess = summary.loc[summary["column"] == "%Essential Workers"].iloc[0]
+    food = summary.loc[summary["column"] == "Food % of Essential Workers"].iloc[0]
+    assert ess["Spearman ρ"] < 0
+    assert food["Spearman ρ"] < 0

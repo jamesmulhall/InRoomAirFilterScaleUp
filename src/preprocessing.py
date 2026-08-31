@@ -227,7 +227,7 @@ def build_isco_lvl2_template(
 
 
 def _parse_isco_l2_code(classif_label: str) -> str:
-    """Extract normalised ISCO-08 L2 key from ``classif1.label`` (e.g. ``22``, ``Tot``, ``Not``)."""
+    """Normalised ISCO-08 L2 key from ``classif1.label``: ``22``, ``Tot`` or ``Not``."""
     part = str(classif_label).split(":", 1)[-1].strip()
     if part.lower().startswith("total"):
         return "Tot"
@@ -274,11 +274,11 @@ def _select_country_ilo_year(
 def build_employment_by_isco(ilo_df: pd.DataFrame) -> Dict[str, Dict[str, float]]:
     """Reduce ILO ISCO-08 L2 employment CSV to ``{country: {code: employment}}``.
 
-  - Keeps only ``sex.label == "Total"`` when that column exists.
-  - Uses one survey year per country (all codes from the same year).
-  - Year: latest with NEC share of total <= 10%; if none qualify, the year
-    with the lowest NEC share (ties → more recent year).
-  """
+    - Keeps only ``sex.label == "Total"`` when that column exists.
+    - Uses one survey year per country (all codes from the same year).
+    - Year: latest with NEC share of total <= 10%; if none qualify, the year
+      with the lowest NEC share (ties → more recent year).
+    """
     df = ilo_df.copy()
     if "sex.label" in df.columns:
         df = df[df["sex.label"] == "Total"].copy()

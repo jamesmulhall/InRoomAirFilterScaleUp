@@ -19,25 +19,46 @@ Repository: https://drive.google.com/drive/folders/1PC_QixM3_B3nh0tNhnJJnPxHECVE
 | Path | Purpose |
 | --- | --- |
 | `data/essential_workers/` | ILO, O*NET, poll, crosswalk, labour force, JEM (optional) |
-| `data/scale_up/` | Country list, CR box parameters, coal baghouse airflow |
+| `data/scale_up/` | Parameters, settings, coal baghouse airflow, cached World Bank MVA |
 | `results/essential_workers/` | Essential/vital worker CSV outputs |
-| `results/scale_up/` | Scale-up trajectory CSV/PKL and time-to-reach tables |
-| `results/visualizations/` | HTML choropleths and ALLFED-styled PNG maps |
+| `results/scale_up/` | Weekly eCADR and workforce coverage for each scenario |
+| `results/visualizations/` | ALLFED-styled manuscript figures (300 DPI PNG) |
 | `src/preprocessing.py` | Load and transform raw essential-worker inputs |
 | `src/essential_workers.py` | Overlap calibration, labour-force pipeline, validation |
-| `src/countries.py` | CR-box / baghouse / commercial-filter scale-up by country |
+| `src/scale_up_model.py` | Methods 2.3 scale-up: PACs, CR boxes, coal baghouse filters |
+| `src/linear_models.py` | Fits the coal-airflow and MVA-exponent regressions the model uses |
+| `src/mc_distributions.py` | Monte Carlo samplers for the uncertain parameters |
 | `scripts/` | Processing notebooks (`essential_workers_processing`, `scale_up_processing`) |
-| `scripts/visualization/` | Plotly choropleths, ALLFED matplotlib maps, scale-up visualisers |
+| `scripts/visualization/` | ALLFED matplotlib figure scripts |
 
 ---
 
 ## Installation
 
+Dependencies are declared in `pyproject.toml` and pinned in `uv.lock`.
+
 ```bash
 git clone https://github.com/SPROOK/InRoomAirFilterScaleUp.git
 cd InRoomAirFilterScaleUp
+uv sync --extra dev --extra notebooks
+```
+
+That creates `.venv`, installs the pinned dependencies and installs this
+repository in editable mode, so `import scale_up_model` works from anywhere.
+
+Without uv:
+
+```bash
 pip install -r requirements.txt
 pip install -e .
+```
+
+`requirements.txt` is generated from the lockfile, so regenerate it after
+changing dependencies in `pyproject.toml`:
+
+```bash
+uv lock
+uv export --format requirements-txt --no-hashes --no-emit-project -o requirements.txt
 ```
 
 ---
@@ -59,17 +80,21 @@ pip install -e .
 
 ### Scale-up analysis (`data/scale_up/`)
 
-- `STANDARD_COUNTRY_LIST.csv`
-- `CR_Box_Countries_MS.csv`
-- `BaghouseAirflow.csv`
+- `parameters.csv` — uncertain parameters (low, high, distribution, units, note, source)
+- `settings.csv` — fixed settings, including the width of the reported uncertainty interval; `linear_models.py` writes its fitted values into this file
+- `allocator_fit_data.csv` — the 40 observations behind the MVA exponent
+- `coal_plant_airflow.csv` — coal plant capacity and baghouse airflow sample
+- `BaghouseAirflow.csv` — coal operating MW per country
+- `mva_world_bank.csv` — cached manufacturing value added, downloaded on first run
 
 ---
 
 ## Results
 
 - **`results/essential_workers/`** — per-country/regional worker counts, per-group worker counts and ASHRAE-241 CADR requirements (ECA × 5.7), validation, overlap calibration, on-site housing requirements
-- **`results/scale_up/`** — CADR trajectories (`.csv` / `.pkl`), time-to-reach tables
-- **`results/visualizations/`** — `.html` choropleth maps and `.png` ALLFED-styled figures
+- **`results/scale_up/`** — for each scenario: `weekly_ecadr_by_country_*`, `ecadr_by_channel_*` (weekly, global) and `coverage_{vital,essential}_*` (median and uncertainty interval by region and week), plus `requirements_by_region.csv`, the eCADR each region is measured against
+- **`results/linear_models/`** — plots of the two fitted regressions
+- **`results/visualizations/`** — ALLFED-styled manuscript figures
 
 ---
 
@@ -78,28 +103,47 @@ pip install -e .
 **Processing**
 
 - `scripts/essential_workers_processing.ipynb` — walkthrough of the essential-worker pipeline (including indoor-fraction method comparison)
-- `scripts/scale_up_processing.ipynb` — CR-box / baghouse / commercial-filter scale-up (requires essential-worker outputs)
+- `scripts/scale_up_processing.ipynb` — walkthrough of the scale-up model, stage by stage, ending in the three manuscript figures (requires the essential-worker outputs)
 
 **Visualization** (`scripts/visualization/`)
 
-- `EssentialWorkers_Choropleth_Visualiser.ipynb`
-- `Scale_Up_Visualiser.ipynb`
-- `Airflow_Visualiser.ipynb`
-- `Time_To_Cover_Choropleth_Visualiser.ipynb`
-- `UNRegion_Choropleth_Visualiser.py` (helper module)
-- `plot_essential_workers.py` — ALLFED-styled world maps of essential/vital worker shares (requires `geopandas`, install via `mamba install -c conda-forge geopandas`)
-- `plot_filtration_coverage.py` — filtration coverage maps at week 12 (by country and by UN region); total CADR line plots, stacked area plots, and stacked line plots by source, each with the vital–essential CADR band (same deps; 300 DPI PNGs; fetches ALLFED style sheet from GitHub on first run)
+Every script writes 300 DPI PNGs to `results/visualizations/` and fetches the
+ALLFED style sheet, the Natural Earth country polygons and the ALLFED map border
+from the internet on first run. Maps use the Winkel Tripel projection.
+
+- `plot_essential_workers.py` — `PctVitalWorkers_Manuscript`, `PctEssentialWorkers_Manuscript` and the four-panel `PctWorkersByCountry_Manuscript_2x2`
+- `plot_workers_vs_gdp.py` — `WorkerShares_vs_GDP_PPP` and `FoodShareOfWorkforce_vs_GDP_PPP`, and the correlation tables behind them
+- `plot_group_composition.py` — `GroupComposition_Global`, the occupational make-up of the workforces
+- `plot_filtration_coverage.py` — `ScenarioCoverage_Manuscript` (all three scenarios with uncertainty intervals), `Global_stacked_cadr` (supply by channel) and `FiltrationCoverageByRegion_Manuscript_Week13`. Coverage is a share of the indoor vital requirement. Pass `--scenario` for the stacked figure and the maps, and `--week` for the mapped week
 
 ---
 
 ## Running pipelines from the command line
 
+The scale-up model needs the essential-worker outputs, and reads the fitted
+values from `settings.csv`, so run them in this order:
+
 ```bash
-PYTHONPATH=src python src/essential_workers.py
-PYTHONPATH=src python src/countries.py
-conda run -n InRoomAirFilterScaleUp python scripts/visualization/plot_essential_workers.py
-conda run -n InRoomAirFilterScaleUp python scripts/visualization/plot_filtration_coverage.py
+python src/essential_workers.py
+python src/linear_models.py    # fits the regressions and updates settings.csv
+python src/scale_up_model.py   # all three scenarios
+python scripts/visualization/plot_essential_workers.py
+python scripts/visualization/plot_workers_vs_gdp.py
+python scripts/visualization/plot_group_composition.py
+python scripts/visualization/plot_filtration_coverage.py
 ```
+
+`linear_models.py` writes `baghouse_gradient`, `baghouse_intercept_l_per_s` and
+`mva_exponent_b` straight into `data/scale_up/settings.csv`, each with the R² and
+sample size it came from, so there is nothing to copy by hand. Its plots go to
+`results/linear_models/`.
+
+Both model scripts refuse to run on incomplete inputs: `linear_models.py` stops
+while `coal_plant_airflow.csv` is empty, and `scale_up_model.py` stops while any
+parameter in `parameters.csv` still has `low == high == 0`, naming each one. On
+the first run `scale_up_model.py` downloads manufacturing value added from the
+World Bank; check the printed country count is roughly 190-200, since a much
+lower number means the download failed and a stale cache was used.
 
 ## Tests
 

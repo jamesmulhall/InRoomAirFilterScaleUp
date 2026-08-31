@@ -1,5 +1,15 @@
 #!/usr/bin/env python3
-"""Filtration coverage maps and scale-up plots (ALLFED style)."""
+"""Manuscript figures for the filtration scale-up (ALLFED style).
+
+Reads the scenario results written by ``src/scale_up_model.py`` and produces:
+  - global coverage over time under all three scenarios, with uncertainty
+  - the same coverage broken down by supply channel
+  - a map of coverage by UN region at a chosen week
+
+Coverage is expressed as a share of the indoor vital worker requirement. The
+indoor essential requirement is larger, so full essential coverage sits above
+100 percent on that scale.
+"""
 
 from __future__ import annotations
 
@@ -7,177 +17,89 @@ import argparse
 from pathlib import Path
 
 import matplotlib.pyplot as plt
-import numpy as np
 import pandas as pd
 
 from viz_common import (
     SCALE_UP_RESULTS,
-    VISUALIZATIONS_RESULTS,
     SAVE_DPI,
-    add_worker_range_band,
+    VISUALIZATIONS_RESULTS,
     apply_allfed_style,
+    draw_world_choropleth,
     expand_regions_to_countries,
-    get_series,
-    load_country_iso_map,
-    load_scale_up_table,
-    nominal_value,
-    plot_world_choropleth,
-    week_column,
+    label_panel,
 )
 
-from countries import UN_REGION_LIST  # noqa: E402
+# Supply channels, in stacking order, with manuscript labels
+CHANNEL_LABELS = {
+    "cr_box": "Corsi-Rosenthal boxes, new",
+    "repurposed_cr_box": "Corsi-Rosenthal boxes, repurposed filters",
+    "pac": "Portable air cleaners, new",
+    "repurposed_pac": "Portable air cleaners, repurposed",
+    "baghouse": "Coal baghouse bags, new",
+    "repurposed_baghouse": "Coal baghouse bags, repurposed",
+}
+# SCENARIO_LABELS = {
+#     1: "Scenario 1: higher factory utilisation only",
+#     2: "Scenario 2: growth capped by meltblown supply",
+#     3: "Scenario 3: growth based on N95s during COVID-19",
+# }
 
-CADRPP = 100
-DEFAULT_REGIONS = [
-    "Global",
-    "Northern America",
-    "Eastern Asia",
-    "Southern Africa",
-    "Southern Asia",
-]
-STACK_LABELS = [
-    "CR Box Repurposing",
-    "CR Box Stock",
-    "Coal Baghouse",
-    "CR Box Manufacturing",
-    "Commercial Portable Air Cleaners",
-]
+SCENARIO_LABELS = {
+    3: "Scenario 1: growth based on N95s during COVID-19",
+    2: "Scenario 2: growth capped by meltblown supply",
+    1: "Scenario 3: higher factory utilisation only",
+}
 
-
-def _country_coverage_at_week(
-    df: pd.DataFrame,
-    week: int,
-    *,
-    vital: bool,
-) -> pd.DataFrame:
-    """Per-country coverage % at a given week."""
-    iso_map = load_country_iso_map()
-    week_col = week_column(week)
-    if week_col not in df.columns:
-        raise KeyError(f"Week {week} column {week_col!r} not in scale-up table")
-    rows = []
-    for country in df.index:
-        row = df.loc[country]
-        indoor_vital = nominal_value(row.iloc[0])
-        indoor_essential = nominal_value(row.iloc[1])
-        if vital:
-            pct = nominal_value(row[week_col])
-        else:
-            cadr = nominal_value(row[week_col])
-            if indoor_essential <= 0:
-                pct = 0.0
-            else:
-                pct = 100.0 * cadr / (CADRPP * indoor_essential)
-        rows.append({"Country Name": country, "pct": pct})
-    out = pd.DataFrame(rows)
-    return out.merge(iso_map, on="Country Name", how="inner")
+# Regional coverage maps: shared scale / colormap
+REGION_COVERAGE_CMAP = "YlGn"
+REGION_COVERAGE_VMAX = 100.0
+REGION_COVERAGE_ALPHA = 0.8
 
 
-def _region_coverage_at_week(
-    df: pd.DataFrame,
-    week: int,
-    *,
-    vital: bool,
-    regions: list[str],
-) -> pd.DataFrame:
-    """Per-UN-region coverage % at a given week."""
-    week_col = week_column(week)
-    if week_col not in df.columns:
-        raise KeyError(f"Week {week} column {week_col!r} not in scale-up table")
-    rows = []
-    for region in regions:
-        if region not in df.index:
-            continue
-        row = df.loc[region]
-        indoor_essential = nominal_value(row.iloc[1])
-        if vital:
-            pct = nominal_value(row[week_col])
-        else:
-            cadr = nominal_value(row[week_col])
-            if indoor_essential <= 0:
-                pct = 0.0
-            else:
-                pct = 100.0 * cadr / (CADRPP * indoor_essential)
-        rows.append({"Region": region, "pct": pct})
-    return pd.DataFrame(rows)
+def load_coverage(label: str, scenario: int) -> pd.DataFrame:
+    """
+    Read one coverage table.
+
+    Arguments:
+        label (str): "vital" or "essential".
+        scenario (int): 1, 2 or 3.
+
+    Returns:
+        pandas.DataFrame: Coverage by region and week, as percentages.
+    """
+    path = SCALE_UP_RESULTS / f"coverage_{label}_scenario{scenario}.csv"
+    df = pd.read_csv(path)
+    for column in ["coverage_median", "coverage_lower", "coverage_upper"]:
+        df[column] *= 100.0
+    return df
 
 
-def plot_coverage_maps(output_dir: Path, week: int) -> None:
-    pct_df = load_scale_up_table(SCALE_UP_RESULTS / "Scale_up_PERCENT_INDOOR_VITAL_MS")
-    main_df = load_scale_up_table(SCALE_UP_RESULTS / "Scale_up_output_MS")
+def load_requirements() -> pd.DataFrame:
+    """
+    Read the eCADR requirement of each region and of the world.
 
-    vital_data = _country_coverage_at_week(pct_df, week, vital=True)
-    plot_world_choropleth(
-        vital_data,
-        iso_col="Country Code",
-        value_col="pct",
-        title=f"Indoor vital workers covered by filtration (week {week})",
-        output_path=output_dir / f"FiltrationCoverageVitalWeek{week}.png",
-        legend_label="% indoor vital covered",
-        vmin=0,
-        vmax=100,
+    Returns:
+        pandas.DataFrame: Indexed by region, in L/s.
+    """
+    return pd.read_csv(
+        SCALE_UP_RESULTS / "requirements_by_region.csv", index_col="region"
     )
-    print(f"Wrote {output_dir / f'FiltrationCoverageVitalWeek{week}.png'}")
-
-    essential_data = _country_coverage_at_week(main_df, week, vital=False)
-    plot_world_choropleth(
-        essential_data,
-        iso_col="Country Code",
-        value_col="pct",
-        title=f"Indoor essential workers covered by filtration (week {week})",
-        output_path=output_dir / f"FiltrationCoverageEssentialWeek{week}.png",
-        legend_label="% indoor essential covered",
-        vmin=0,
-    )
-    print(f"Wrote {output_dir / f'FiltrationCoverageEssentialWeek{week}.png'}")
 
 
-def plot_region_coverage_maps(output_dir: Path, week: int) -> None:
-    """World maps with one colour per UN region (regional aggregates)."""
-    pct_df = load_scale_up_table(SCALE_UP_RESULTS / "Scale_up_PERCENT_INDOOR_VITAL_MS")
-    main_df = load_scale_up_table(SCALE_UP_RESULTS / "Scale_up_output_MS")
-    region_dir = output_dir / "regions"
+def essential_requirement_level(requirements: pd.DataFrame) -> float:
+    """
+    Global indoor essential requirement, as a percentage of the vital one.
 
-    vital_regions = _region_coverage_at_week(
-        pct_df, week, vital=True, regions=UN_REGION_LIST
-    )
-    vital_data = expand_regions_to_countries(vital_regions, "Region", "pct")
-    plot_world_choropleth(
-        vital_data,
-        iso_col="Country Code",
-        value_col="pct",
-        # cmap="RdYlGn",
-        cmap="YlGn",
-        title=f"Indoor vital workers covered by filtration by UN region (week {week})",
-        output_path=region_dir / f"FiltrationCoverageVitalWeek{week}.png",
-        legend_label="% indoor vital covered",
-        vmin=0,
-        vmax=100,
-        alpha=0.8,
-        hide_internal_borders=False,
-    )
-    print(f"Wrote {region_dir / f'FiltrationCoverageVitalWeek{week}.png'}")
+    Arguments:
+        requirements (pandas.DataFrame): Output of load_requirements.
 
-    essential_regions = _region_coverage_at_week(
-        main_df, week, vital=False, regions=UN_REGION_LIST
+    Returns:
+        float: Percentage, above 100 because the essential workforce is wider.
+    """
+    return 100.0 * (
+        requirements.loc["Global", "indoor_essential_ecadr_l_per_s"]
+        / requirements.loc["Global", "indoor_vital_ecadr_l_per_s"]
     )
-    essential_data = expand_regions_to_countries(essential_regions, "Region", "pct")
-    plot_world_choropleth(
-        essential_data,
-        iso_col="Country Code",
-        value_col="pct",
-        cmap="Reds_r",
-        title=(
-            f"Indoor essential workers covered by filtration by UN region (week {week})"
-        ),
-        output_path=region_dir / f"FiltrationCoverageEssentialWeek{week}.png",
-        legend_label="% indoor essential covered",
-        vmin=0,
-        vmax=100,
-        alpha=0.8,
-        hide_internal_borders=False,
-    )
-    print(f"Wrote {region_dir / f'FiltrationCoverageEssentialWeek{week}.png'}")
 
 
 def _save_figure(fig: plt.Figure, output_path: Path) -> None:
@@ -186,34 +108,73 @@ def _save_figure(fig: plt.Figure, output_path: Path) -> None:
     plt.close(fig)
 
 
-def plot_scale_up_line(
-    df_main: pd.DataFrame,
-    region: str,
-    output_path: Path,
-    *,
-    sigma: float = 1.0,
-    show_start: bool = False,
-) -> None:
-    """Total CADR line plot with uncertainty band and vital–essential range."""
-    t, vals, errs = get_series(df_main, region)
+def plot_scenario_coverage(output_path: Path) -> None:
+    """
+    Global coverage over time under all three scenarios.
+
+    Each scenario gets its median and uncertainty interval. The band at the top
+    marks the range between fully covering indoor vital workers and fully
+    covering the wider indoor essential workforce.
+
+    Arguments:
+        output_path (Path): PNG to write.
+    """
+    requirements = load_requirements()
+    essential_level = essential_requirement_level(requirements)
+    by_scenario = {}
+    for scenario in SCENARIO_LABELS:
+        df = load_coverage("vital", scenario)
+        by_scenario[scenario] = df[df.region == "Global"]
+    interval = by_scenario[1].interval_percent.iloc[0]
+    last_week = by_scenario[1].week.max()
+
     fig, ax = plt.subplots(figsize=(10, 6))
-    (line,) = ax.plot(t, vals, label="Total CADR", linewidth=2)
-    color = line.get_color()
-    ax.fill_between(
-        t,
-        vals - sigma * errs,
-        vals + sigma * errs,
-        color=color,
-        alpha=0.25,
-        label=f"±{sigma:g}σ uncertainty",
+    # Scenario 3 is dashed so it stays visible where the meltblown cap does not
+    # bind and scenario 2 lies on top of it
+    for (scenario, label), style in zip(SCENARIO_LABELS.items(), ["-", "-", "-"]):
+        df = by_scenario[scenario]
+        (line,) = ax.plot(
+            df.week, df.coverage_median, linewidth=2, linestyle=style, label=label
+        )
+        ax.fill_between(
+            df.week,
+            df.coverage_lower,
+            df.coverage_upper,
+            color=line.get_color(),
+            alpha=0.2,
+            linewidth=0,
+        )
+
+    ax.axhspan(
+        100.0,
+        essential_level,
+        color="dimgray",
+        alpha=0.15,
+        label=(
+            "Full coverage: indoor vital (100%) to "
+            f"indoor essential workers ({essential_level:.0f}%)"
+        ),
     )
-    add_worker_range_band(ax, df_main, region, alpha=0.12, color=color)
-    if show_start:
-        ax.set_xlim(0, 20)
-    ax.set_ylabel("Clean Air Delivery Rate (L/s)")
-    ax.set_xlabel("Weeks")
-    ax.set_title(f"{region} scale-up with ±{sigma:g}σ bands", fontweight="bold")
+
+    ax.set_xlim(1, last_week)
+    # ax.set_ylim(0, essential_level * 1.05)
+    ax.set_ylim(0, 30)
+    ax.set_xlabel("Weeks since the start of the pandemic")
+    ax.set_ylabel("% of indoor vital worker requirement")
+    ax.set_title(
+        "Global filtration supply against workforce requirements\n"
+        f"medians with {interval:.0f}% uncertainty intervals",
+        fontweight="bold",
+    )
     ax.grid(True, linestyle="--", alpha=0.4)
+    right = ax.secondary_yaxis(
+        "right",
+        functions=(
+            lambda y: y * 100.0 / essential_level,
+            lambda y: y * essential_level / 100.0,
+        ),
+    )
+    right.set_ylabel("% of indoor essential worker requirement")
     ax.legend(
         fontsize=9,
         loc="upper center",
@@ -226,47 +187,35 @@ def plot_scale_up_line(
     _save_figure(fig, output_path)
 
 
-def plot_stacked_region(
-    df_repur: pd.DataFrame,
-    df_stock: pd.DataFrame,
-    df_coalbag: pd.DataFrame,
-    df_man: pd.DataFrame,
-    df_portable: pd.DataFrame,
-    region: str,
-    output_path: Path,
-    *,
-    show_start: bool = False,
-) -> None:
-    """Stacked area CADR contributions with vital–essential worker band."""
-    _, vals1, _ = get_series(df_repur, region)
-    _, vals2, _ = get_series(df_stock, region)
-    _, vals3, _ = get_series(df_coalbag, region)
-    _, vals4, _ = get_series(df_man, region)
-    _, vals5, _ = get_series(df_portable, region)
-    t = np.arange(len(vals1))
+def plot_stacked_channels(output_path: Path, scenario: int) -> None:
+    """
+    Global coverage over time, broken down by supply channel.
+
+    Arguments:
+        output_path (Path): PNG to write.
+        scenario (int): 1, 2 or 3.
+    """
+    channels = pd.read_csv(
+        SCALE_UP_RESULTS / f"ecadr_by_channel_scenario{scenario}.csv", index_col="week"
+    )
+    requirement = load_requirements().loc["Global", "indoor_vital_ecadr_l_per_s"]
+    shares = 100.0 * channels[list(CHANNEL_LABELS)] / requirement
 
     fig, ax = plt.subplots(figsize=(10, 6))
-    add_worker_range_band(ax, df_repur, region)
-
     ax.stackplot(
-        t,
-        vals1,
-        vals2,
-        vals3,
-        vals4,
-        vals5,
-        labels=STACK_LABELS,
-        alpha=0.6,
+        shares.index,
+        *[shares[name] for name in CHANNEL_LABELS],
+        labels=list(CHANNEL_LABELS.values()),
+        alpha=0.75,
     )
-
-    if show_start:
-        ax.set_xlim(0, 20)
-        total_at_20 = vals1[20] + vals2[20] + vals3[20] + vals4[20] + vals5[20]
-        ax.set_ylim(0, total_at_20 * 1.05)
-
-    ax.set_ylabel("Clean Air Delivery Rate (L/s)")
-    ax.set_xlabel("Weeks")
-    ax.set_title(f"{region} — stacked filtration scale-up", fontweight="bold")
+    ax.set_xlim(shares.index.min(), shares.index.max())
+    ax.set_ylim(0, None)
+    ax.set_xlabel("Weeks since the start of the pandemic")
+    ax.set_ylabel("% of indoor vital worker requirement")
+    ax.set_title(
+        f"Global filtration supply by source\n{SCENARIO_LABELS[scenario]}",
+        fontweight="bold",
+    )
     ax.grid(True, linestyle="--", alpha=0.4)
     ax.legend(
         fontsize=9,
@@ -280,157 +229,75 @@ def plot_stacked_region(
     _save_figure(fig, output_path)
 
 
-def plot_stacked_lines_region(
-    df_repur: pd.DataFrame,
-    df_stock: pd.DataFrame,
-    df_coalbag: pd.DataFrame,
-    df_man: pd.DataFrame,
-    df_portable: pd.DataFrame,
-    region: str,
-    output_path: Path,
-    *,
-    show_start: bool = False,
-) -> None:
-    """Stacked line plot: cumulative CADR by source with vital–essential band."""
-    _, vals1, _ = get_series(df_repur, region)
-    _, vals2, _ = get_series(df_stock, region)
-    _, vals3, _ = get_series(df_coalbag, region)
-    _, vals4, _ = get_series(df_man, region)
-    _, vals5, _ = get_series(df_portable, region)
-    t = np.arange(len(vals1))
+def plot_region_coverage_maps(output_path: Path, scenario: int, week: int) -> None:
+    """
+    Coverage by UN region at one week: indoor essential above, indoor vital below.
 
-    cum1 = vals1
-    cum2 = vals1 + vals2
-    cum3 = vals1 + vals2 + vals3
-    cum4 = vals1 + vals2 + vals3 + vals4
-    cum5 = vals1 + vals2 + vals3 + vals4 + vals5
-    cumulative = [cum1, cum2, cum3, cum4, cum5]
-
-    fig, ax = plt.subplots(figsize=(10, 6))
-    add_worker_range_band(ax, df_repur, region)
-
-    for label, y in zip(STACK_LABELS, cumulative):
-        ax.plot(t, y, linewidth=2, label=label)
-
-    if show_start:
-        ax.set_xlim(0, 20)
-        ax.set_ylim(0, cum5[20] * 1.05)
-
-    ax.set_ylabel("Clean Air Delivery Rate (L/s)")
-    ax.set_xlabel("Weeks")
-    ax.set_title(f"{region} — stacked line filtration scale-up", fontweight="bold")
-    ax.grid(True, linestyle="--", alpha=0.4)
-    ax.legend(
-        fontsize=9,
-        loc="upper center",
-        bbox_to_anchor=(0.5, -0.12),
-        ncol=2,
-        frameon=True,
-        framealpha=0.9,
-    )
-    fig.tight_layout()
-    _save_figure(fig, output_path)
-
-
-def plot_scale_up_regions(
-    output_dir: Path,
-    regions: list[str],
-    *,
-    show_start: bool,
-) -> None:
-    df_main = load_scale_up_table(SCALE_UP_RESULTS / "Scale_up_output_MS")
-    df_repur = load_scale_up_table(SCALE_UP_RESULTS / "Scale_up_CR_REPUR_MS")
-    df_stock = load_scale_up_table(SCALE_UP_RESULTS / "Scale_up_CR_STOCK")
-    df_coalbag = load_scale_up_table(SCALE_UP_RESULTS / "Scale_up_COALBAG_MS")
-    df_man = load_scale_up_table(SCALE_UP_RESULTS / "Scale_up_CR_MAN_MS")
-    df_portable = load_scale_up_table(SCALE_UP_RESULTS / "Scale_up_PORTABLE_MS")
-
-    line_dir = output_dir / "scale_up_lines"
-    stacked_dir = output_dir / "stacked_scale_up"
-    stacked_lines_dir = output_dir / "stacked_lines_scale_up"
-
-    for region in regions:
-        if region not in df_main.index:
-            print(f"Skipping unknown region: {region}")
-            continue
-        slug = region.replace(" ", "_")
-
-        plot_scale_up_line(
-            df_main,
-            region,
-            line_dir / f"{slug}_cadr_line.png",
-            show_start=False,
+    Arguments:
+        output_path (Path): PNG to write.
+        scenario (int): 1, 2 or 3.
+        week (int): Week to map.
+    """
+    panels = []
+    for letter, label, name in [
+        ("a", "essential", "Indoor essential workers"),
+        ("b", "vital", "Indoor vital workers"),
+    ]:
+        df = load_coverage(label, scenario)
+        at_week = df[(df.week == week) & (df.region != "Global")]
+        if at_week.empty:
+            raise ValueError(f"No {label} coverage at week {week}")
+        panels.append(
+            (
+                letter,
+                expand_regions_to_countries(at_week, "region", "coverage_median"),
+                f"{name} covered by filtration (week {week})",
+            )
         )
-        print(f"Wrote {line_dir / f'{slug}_cadr_line.png'}")
 
-        plot_stacked_region(
-            df_repur,
-            df_stock,
-            df_coalbag,
-            df_man,
-            df_portable,
-            region,
-            stacked_dir / f"{slug}_stacked_cadr.png",
-            show_start=False,
+    fig, axes = plt.subplots(2, 1, figsize=(10, 6.8))
+    fig.subplots_adjust(left=0.01, right=0.99, top=0.94, bottom=0.09, hspace=0.12)
+
+    mappable = None
+    for ax, (letter, data, title) in zip(axes, panels):
+        mappable = draw_world_choropleth(
+            ax,
+            data,
+            iso_col="Country Code",
+            value_col="coverage_median",
+            cmap=REGION_COVERAGE_CMAP,
+            vmin=0.0,
+            vmax=REGION_COVERAGE_VMAX,
+            alpha=REGION_COVERAGE_ALPHA,
         )
-        print(f"Wrote {stacked_dir / f'{slug}_stacked_cadr.png'}")
+        label_panel(ax, letter)
+        ax.set_title(title, fontsize=12, fontweight="bold", pad=4)
 
-        plot_stacked_lines_region(
-            df_repur,
-            df_stock,
-            df_coalbag,
-            df_man,
-            df_portable,
-            region,
-            stacked_lines_dir / f"{slug}_stacked_lines_cadr.png",
-            show_start=False,
-        )
-        print(f"Wrote {stacked_lines_dir / f'{slug}_stacked_lines_cadr.png'}")
+    cax = fig.add_axes([0.24, 0.03, 0.52, 0.022])
+    cbar = fig.colorbar(mappable, cax=cax, orientation="horizontal")
+    cbar.set_label("% of indoor workers covered", fontsize=11)
+    cbar.ax.tick_params(labelsize=10)
 
-        if show_start:
-            plot_scale_up_line(
-                df_main,
-                region,
-                line_dir / f"{slug}_cadr_line_first_20_weeks.png",
-                show_start=True,
-            )
-            print(f"Wrote {line_dir / f'{slug}_cadr_line_first_20_weeks.png'}")
-            plot_stacked_region(
-                df_repur,
-                df_stock,
-                df_coalbag,
-                df_man,
-                df_portable,
-                region,
-                stacked_dir / f"{slug}_stacked_cadr_first_20_weeks.png",
-                show_start=True,
-            )
-            print(f"Wrote {stacked_dir / f'{slug}_stacked_cadr_first_20_weeks.png'}")
-            plot_stacked_lines_region(
-                df_repur,
-                df_stock,
-                df_coalbag,
-                df_man,
-                df_portable,
-                region,
-                stacked_lines_dir / f"{slug}_stacked_lines_cadr_first_20_weeks.png",
-                show_start=True,
-            )
-            print(
-                f"Wrote {stacked_lines_dir / f'{slug}_stacked_lines_cadr_first_20_weeks.png'}"
-            )
+    output_path.parent.mkdir(parents=True, exist_ok=True)
+    # Avoid global savefig.bbox="tight" so the manual colorbar placement sticks.
+    fig.savefig(output_path, dpi=SAVE_DPI, bbox_inches=None)
+    plt.close(fig)
 
 
-def main(
-    output_dir: Path,
-    week: int,
-    regions: list[str],
-    show_start: bool,
-) -> None:
+def main(output_dir: Path, scenario: int, week: int) -> None:
     apply_allfed_style()
-    plot_coverage_maps(output_dir, week)
-    plot_region_coverage_maps(output_dir, week)
-    plot_scale_up_regions(output_dir, regions, show_start=show_start)
+
+    scenario_path = output_dir / "ScenarioCoverage_Manuscript.png"
+    plot_scenario_coverage(scenario_path)
+    print(f"Wrote {scenario_path}")
+
+    stacked_path = output_dir / "Global_stacked_cadr.png"
+    plot_stacked_channels(stacked_path, scenario)
+    print(f"Wrote {stacked_path}")
+
+    map_path = output_dir / f"FiltrationCoverageByRegion_Manuscript_Week{week}.png"
+    plot_region_coverage_maps(map_path, scenario, week)
+    print(f"Wrote {map_path}")
 
 
 if __name__ == "__main__":
@@ -442,21 +309,17 @@ if __name__ == "__main__":
         help="Directory for PNG outputs",
     )
     parser.add_argument(
+        "--scenario",
+        type=int,
+        default=2,
+        choices=[1, 2, 3],
+        help="Scenario for the stacked figure and the maps",
+    )
+    parser.add_argument(
         "--week",
         type=int,
-        default=12,
-        help="Week index for coverage maps (12 ≈ 3 months)",
-    )
-    parser.add_argument(
-        "--regions",
-        nargs="+",
-        default=DEFAULT_REGIONS,
-        help="Regions for scale-up line and stacked plots",
-    )
-    parser.add_argument(
-        "--show-start",
-        action="store_true",
-        help="Also save first-20-weeks variants",
+        default=13,
+        help="Week to map (13 is three months)",
     )
     args = parser.parse_args()
-    main(args.output_dir, args.week, args.regions, args.show_start)
+    main(args.output_dir, args.scenario, args.week)

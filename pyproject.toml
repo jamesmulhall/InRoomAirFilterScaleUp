@@ -1,0 +1,55 @@
+[build-system]
+requires = ["setuptools>=64", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "inroom-air-filter"
+version = "0.1.0"
+description = "Scale-up of in-room air filtration to protect essential workers during a catastrophic pandemic"
+readme = "README.md"
+requires-python = ">=3.11"
+license = { text = "Apache-2.0" }
+authors = [{ name = "ALLFED", email = "james.m@allfed.info" }]
+
+dependencies = [
+    "pandas>=1.4.3",
+    "numpy>=1.23.1",
+    "scipy>=1.9.0",
+    "matplotlib>=3.5.1",
+    "requests>=2.28",
+    "statsmodels>=0.14",
+    "country_converter>=1.0",
+    "geopandas>=0.13",
+    "openpyxl>=3.0",
+    "xlrd>=2.0.1",
+]
+
+[project.optional-dependencies]
+dev = [
+    "pytest>=7.1.2",
+    "black",
+    "flake8",
+    "pyyaml",
+]
+notebooks = [
+    "jupyter",
+    "ipykernel",
+    "ipywidgets",
+    "tqdm",
+]
+
+# The analysis modules sit directly in src/ and are imported by name, for
+# example "import scale_up_model", so they are listed as top-level modules
+# rather than found as packages.
+[tool.setuptools]
+py-modules = [
+    "essential_workers",
+    "preprocessing",
+    "paths",
+    "scale_up_model",
+    "linear_models",
+    "mc_distributions",
+]
+
+[tool.setuptools.package-dir]
+"" = "src"

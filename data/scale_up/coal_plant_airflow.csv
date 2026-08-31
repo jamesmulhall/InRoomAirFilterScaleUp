@@ -1,0 +1,11 @@
+plant,capacity_mw,airflow_l_per_s,notes,source
+"Big Stone Plant, SD (US)",475,991000,"Pulse-jet conversion; 16 compartments; 16,112 bags; 6-in x 25-ft bags; A/C net ~3.6 ft/min. 2,100,000 ACFM.",https://www.airflowsciences.com/sites/default/files/docs/Electric_Power_Paper.pdf
+"Monticello Station, TX (US), Units 1-2",575,868000,"36 compartments; 204 bags/compartment; 7,344 bags; 11.5-in x 30.75-ft. Gas flow ~1.84 million ACFM; net A/C ~2.0-2.3.",https://www.academia.edu/47716682/Improving_Baghouse_Performance_at_the_Monticello_Generating_Station
+"Harrington Station, TX (US)",350,708000,"28 compartments; 204 bags/compartment = 5,712 bags; ~11.25-in x 30 ft 8 in; unit sized to ~1.5 million CFM (vendor ad).",https://nepis.epa.gov/Exe/ZyPURL.cgi?Dockey=2000TMVK.TXT ; https://www.shotpeener.com/library/misc_history/pdf/Wheelabrator%20APC%20Division%20Dust%20Collectors%20advertisement.pdf
+Amerair CFB utility boiler,65,106000,"Baghouse 8 modules filtering ~225,000 ACFM @ 325 F (long-bag technology).",https://amerair.net/dry-filtration-baghouses/
+"Cogeneration facility, Midwest (US)",105,192000,"Pulse-jet baghouse (PPS bags); ~407,000 ACFM.",https://amerair.net/dry-filtration-baghouses
+"Martin Drake Unit 6, CO (US)",85,188779,"400,000 ACFM reverse-air baghouse. High ACFM/MW partly from ~1,840 m site altitude (volumetric flow rises as ambient pressure falls).",https://nepis.epa.gov/Exe/ZyPURL.cgi?Dockey=9101MPWW.TXT
+"Sunbury SES, PA (US)",175,419089,"888,000 ACFM fabric filter. Anthracite culm/waste-coal firing gives a high heat rate, hence high flow per MW.",https://nepis.epa.gov/Exe/ZyPURL.cgi?Dockey=9100Y4HG.TXT
+"Nucla Station, CO (US)",13,40701,"86,240 ACFM baghouse on the CFB demonstration unit. Site altitude ~1,700 m; small unit with poor heat rate.",https://nepis.epa.gov/Exe/ZyPURL.cgi?Dockey=91014Y8V.TXT
+Munmorah Power Station (Australia),350,480000,"480 m3/s at 140 C at the fabric filter inlet. Quoted at flue temperature, so directly comparable to ACFM.",https://nepis.epa.gov/Exe/ZyPURL.cgi?Dockey=9101MPWW.TXT
+Koradi Unit 6 (India),210,374000,"374 m3/s (=374,000 L/s) flue gas at MCR quoted in the ESP/bag-filter retrofit assessment.",https://cpcb.nic.in/openpdffile.php?id=UmVwb3J0RmlsZXMvTmV3SXRlbV8yMDFfQ29hbC5wZGY=

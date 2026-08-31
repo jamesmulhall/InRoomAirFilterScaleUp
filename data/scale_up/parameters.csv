@@ -1,0 +1,42 @@
+parameter,low,high,distribution,units,note,source
+total_air_filter_revenue_usd,16664240000,24996360000,normal,USD/year,"Total global air filter market revenue, the base that the industrial MERV split is applied to (methods 2.3.2). CR_Box_MASTER gives 20.8303 bn USD; range shown is plus/minus 20 percent.",https://www.grandviewresearch.com/horizon/statistics/filters-market/type/air-filters/global
+industrial_revenue_1_4_usd,154530000,188870000,normal,USD/year,"Industrial air filter revenue, MERV 1-4. CR_Box_MASTER cell C24 (171.7 USD M) plus/minus 10 percent.",https://www.grandviewresearch.com/horizon/outlook/industrial-air-filtration-market-size/global
+industrial_revenue_5_8_usd,507060000,619740000,normal,USD/year,"Industrial air filter revenue, MERV 5-8. CR_Box_MASTER cell C22 (563.4 USD M) plus/minus 10 percent.",https://www.grandviewresearch.com/horizon/outlook/industrial-air-filtration-market-size/global
+industrial_revenue_9_12_usd,1144620000,1398980000,normal,USD/year,"Industrial air filter revenue, MERV 9-12. CR_Box_MASTER cell C23 (1271.8 USD M) plus/minus 10 percent.",https://www.grandviewresearch.com/horizon/outlook/industrial-air-filtration-market-size/global
+industrial_revenue_13_16_usd,1690290000,2066000000,normal,USD/year,"Industrial air filter revenue, MERV 13-16. CR_Box_MASTER cell C25 (1878.1 USD M) plus/minus 10 percent.",https://www.grandviewresearch.com/horizon/outlook/industrial-air-filtration-market-size/global
+industrial_revenue_17_20_usd,1987830000,2429570000,normal,USD/year,"Industrial air filter revenue, MERV 17-20. CR_Box_MASTER cell C21 (2208.7 USD M) plus/minus 10 percent.",https://www.grandviewresearch.com/horizon/outlook/industrial-air-filtration-market-size/global
+pac_market_revenue_usd,11037333333,16556000000,normal,USD/year,Average of three market reports plus/minus 20%,"https://www.fortunebusinessinsights.com/portable-air-purifier-market-118150
+https://www.mordorintelligence.com/industry-reports/portable-air-purifier-market
+https://www.expertmarketresearch.com/reports/portable-air-purifier-market"
+fraction_room,0.5,0.68,normal,fraction,Median 0.59 per methods; 90 percent UI generated around this,https://www.mordorintelligence.com/industry-reports/portable-air-purifier-market
+fraction_merv13_plus,0.4,0.6,lognormal,fraction,Methods 2.3.1.,https://www.mordorintelligence.com/industry-reports/portable-air-purifier-market
+fraction_non_panel,0.6,0.7,normal,fraction,Panel filter market (~7 B) is approx. 35% of global market (~20 B),"https://www.researchandmarkets.com/report/global-panel-filters-market
+https://www.marketsandmarkets.com/Market-Reports/panel-filters-market-118890404.html"
+pac_price_usd,100,300,lognormal,USD/unit,*Methods 2.3.1. Placeholder median pending a model run.,
+pac_ecadr_l_per_s,75,125,normal,L/s/unit,*Methods equation 2.,
+cr_box_ecadr_l_per_s,100,160,normal,L/s/unit,*MISSING IN METHODS. Placeholder brackets the 189 L/s measured for 4 x MERV 13 1 inch filters.,https://pmc.ncbi.nlm.nih.gov/articles/PMC9828579
+price_per_volume_1_4,924.32,1138.85,normal,USD/m3 media,From CR_Box_MASTER sheet 'Filter Price Per Merv Rating'.,
+price_per_volume_5_8,686.37,1581.33,normal,USD/m3 media,From CR_Box_MASTER sheet 'Filter Price Per Merv Rating'.,
+price_per_volume_9_12,747.98,1857.04,normal,USD/m3 media,From CR_Box_MASTER sheet 'Filter Price Per Merv Rating'.,
+price_per_volume_13_16,1357.62,2544.88,normal,USD/m3 media,From CR_Box_MASTER sheet 'Filter Price Per Merv Rating'.,
+price_per_volume_17_20,19184.48,26666.1,normal,USD/m3 media,From CR_Box_MASTER sheet 'Filter Price Per Merv Rating'.,
+fraction_panel,0.3,0.4,normal,fraction,Panel filter market (~7 B) is approx. 35% of global market (~20 B),"https://www.researchandmarkets.com/report/global-panel-filters-market
+https://www.marketsandmarkets.com/Market-Reports/panel-filters-market-118890404.html"
+filter_volume_m3,0.006555,0.006555,uniform,m3/filter,Volume of a 20x20x1 filter (0.508 x 0.508 x 0.0254 m). Equation 4 divides revenue by price per m3 of media times this volume.,
+filter_media_area_m2,0.47,0.47,uniform,m2/filter,"Media area per pleated filter, used only for the meltblown mass cap. Manufacturer datasheets cluster at 0.51 m2 (5.5 sq ft).",https://www.purolatorairfilters.com/pdfs/PuroGreen-13.pdf
+baghouse_efficiency,0.5,0.8,normal,fraction,"Methods 2.3.3, minimum efficiency as a function of particle size.",https://www.mdpi.com/1660-4601/16/2/247
+baghouse_utilisation,0.1,0.3,normal,fraction,*MISSING IN METHODS. Share of coal units fitted with baghouses rather than electrostatic precipitators.,
+fraction_recovered,0.5,0.8,normal,fraction,"*MISSING IN METHODS. Share of in-service units recovered, methods equations 9 and 10.",
+pac_lifespan_years,2,5,lognormal,years,"Methods, 3 years with a 2 to 5 year range.",
+panel_filter_lifespan_years,0.5,1,normal,years,"Methods, 9 months with a 6 to 12 month range.",
+scenario3_multiplier,2,6,normal,multiple,"Methods 2.3.4, 4x with a 90 percent CI of 2 to 6x.",https://link.springer.com/content/pdf/10.1057/s42214-020-00062-w.pdf
+meltblown_total_tonnes,215475,291525,normal,tonnes/year,"Global meltblown consumption, 2023. plus/minus 15%",https://www.smithers.com/resources/2023/march/post-covid-market-correction-for-meltblown
+meltblown_share_available,0.12,0.12,normal,fraction,"Methods 2.3.4, half of the 24 percentage point shift PPE took during COVID-19.",https://www.smithers.com/resources/2023/march/post-covid-market-correction-for-meltblown
+meltblown_basis_weight_gsm,20,80,normal,g/m2,"Air-filter-grade meltblown. A market-average basis weight would be roughly 127 g/m2, inflated by liquid filtration media, and would make the cap far too tight.",https://patents.google.com/patent/US20080017038A1/en
+meltblown_layers_per_filter,1,2,normal,layers,Methods 2.3.4. Based on finding panel filters with one or two layers.,https://precambrian.ca/product-hvac.html
+baghouse_bag_life_years,1,3,normal,years,Service life of a baghouse filter bag. Annual replacement-bag production is the installed stock divided by this.,https://www.baghouseamerica.com/blog/how-long-do-filter-bags-last/
+idle_coal_capacity_share,0.2,0.3,normal,fraction,"Share of coal capacity left idle by the fall in electricity demand, which bounds how many bags can be recovered without cutting generation. IEA: every month of full COVID-19 lockdown cut demand by 20 percent on average; Italy over 25 percent, France, India, Spain and the UK at least 15 percent.",https://www.iea.org/reports/global-energy-review-2020/electricity
+pc_fan_market_revenue_usd,5062500000,8437500000,normal,USD/year,"*MISSING IN METHODS. Global PC case fan market revenue, methods equation 5.",
+pc_fan_price_usd,5,15,normal,USD/fan,*MISSING IN METHODS. Average price per PC case fan.,
+box_fan_market_revenue_usd,378657080.97,7148009585.7,normal,USD/year,"*MISSING IN METHODS. Global box fan market revenue, methods equation 5.",
+box_fan_price_usd,20,44,normal,USD/fan,*MISSING IN METHODS. Average price per box fan.,

@@ -12,13 +12,9 @@ from pathlib import Path
 
 import pytest
 
-from paths import ESSENTIAL_WORKERS_DATA, SCALE_UP_DATA
+from paths import ESSENTIAL_WORKERS_DATA
 
-
-REPO_ROOT = Path(__file__).resolve().parents[1]
-FIXTURES = Path(__file__).resolve().parent / "fixtures"
-FIXTURES_EW = FIXTURES / "essential_workers"
-FIXTURES_SCALE_UP = FIXTURES / "scale_up"
+FIXTURES_EW = Path(__file__).resolve().parent / "fixtures" / "essential_workers"
 
 
 def pytest_addoption(parser):
@@ -62,12 +58,6 @@ def data_dir(use_full_data) -> Path:
 
 
 @pytest.fixture(scope="session")
-def scale_up_data_dir(use_full_data) -> Path:
-    """Scale-up pipeline inputs (country list, CR box, baghouse)."""
-    return SCALE_UP_DATA if use_full_data else FIXTURES_SCALE_UP
-
-
-@pytest.fixture(scope="session")
 def ew_results_dir(tmp_path_factory) -> Path:
     out = tmp_path_factory.mktemp("ew_results")
     out.mkdir(parents=True, exist_ok=True)
@@ -86,15 +76,3 @@ def ew_outputs(data_dir, ew_results_dir):
     from essential_workers import run_pipeline
 
     return run_pipeline(data_dir=data_dir, results_dir=ew_results_dir, write=True)
-
-
-@pytest.fixture(scope="session")
-def countries_outputs(scale_up_data_dir, ew_outputs, ew_results_dir):  # noqa: ARG001
-    """Run the countries pipeline once (depends on EW outputs being on disk)."""
-    from countries import run_pipeline
-
-    return run_pipeline(
-        data_dir=scale_up_data_dir,
-        essential_workers_csv=ew_results_dir / "EssentialWorkersByCountry.csv",
-        write=False,
-    )

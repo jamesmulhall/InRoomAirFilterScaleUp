@@ -83,6 +83,7 @@ from typing import Any, Dict, Iterable, Literal, Optional
 
 import numpy as np
 import pandas as pd
+from scipy import stats
 
 from paths import ESSENTIAL_WORKERS_DATA, ESSENTIAL_WORKERS_RESULTS
 
@@ -159,7 +160,7 @@ ISCO_L2_TO_GROUP: Dict[str, str] = {
 NON_ILO_POLL_CODES = ["13", "21", "33", "35"]
 OVERRIDES_INDOOR_L4 = ["0110", "0210", "0310"]
 
-from preprocessing import (
+from preprocessing import (  # noqa: E402,F401
     build_employment_by_isco,
     build_isco_lvl2_template,
     build_isco_lvl2_template as _build_isco_lvl2_template,
@@ -170,7 +171,6 @@ from preprocessing import (
     pct_to_indoor_fraction as _pct_to_indoor_fraction,
     prepare_labour_force,
 )
-
 
 # ---------------------------------------------------------------------------
 # Pipeline constants
@@ -460,7 +460,7 @@ def essential_mass_by_group(
     employment: Dict[str, float],
     weights_template: pd.DataFrame,
 ) -> Dict[str, float]:
-    """Employment in essential ISCO codes, summed by ILO Figure A1 group (no overlap)."""
+    """Employment in essential ISCO codes, by ILO Figure A1 group (no overlap)."""
     masses = {g: 0.0 for g in GROUP_OVERLAP}
     for code, emp in employment.items():
         code_str = str(code).strip()
@@ -657,7 +657,6 @@ def backfill_calibrated_overlaps(
     if similar_iso3 is None:
         similar_iso3 = SIMILAR_ISO3
     df = overlap_df.copy()
-    fill_cols = list(CALIBRATABLE_OVERLAP_COLUMNS) + ["calibration_x"]
 
     for _ in range(max_iterations):
         still_missing = False
@@ -875,18 +874,36 @@ def build_dual_validation_merged(
 class WorkerDicts:
     """Bundle of per-country worker counts and percentages."""
 
-    iew_ilo: Dict[str, float] = field(default_factory=dict) # indoor essential workers (ilo)
-    ew_ilo: Dict[str, float] = field(default_factory=dict) # essential workers (ilo)
-    ivw_poll: Dict[str, float] = field(default_factory=dict) # indoor vital workers (poll)
-    vw_poll: Dict[str, float] = field(default_factory=dict) # vital workers (poll)
-    af_indoor_essential: Dict[str, float] = field(default_factory=dict) # armed forces (indoor essential)
-    af_essential: Dict[str, float] = field(default_factory=dict) # armed forces (essential)
-    iew_pc: Dict[str, float] = field(default_factory=dict) # indoor essential workers (percentage)
-    ew_pc: Dict[str, float] = field(default_factory=dict) # essential workers (percentage)
-    ivw_pc: Dict[str, float] = field(default_factory=dict) # indoor vital workers (percentage)
-    vw_pc: Dict[str, float] = field(default_factory=dict) # vital workers (percentage)
-    af_indoor_essential_pc: Dict[str, float] = field(default_factory=dict) # armed forces (indoor essential) (percentage)
-    af_essential_pc: Dict[str, float] = field(default_factory=dict) # armed forces (essential) (percentage)
+    iew_ilo: Dict[str, float] = field(
+        default_factory=dict
+    )  # indoor essential workers (ilo)
+    ew_ilo: Dict[str, float] = field(default_factory=dict)  # essential workers (ilo)
+    ivw_poll: Dict[str, float] = field(
+        default_factory=dict
+    )  # indoor vital workers (poll)
+    vw_poll: Dict[str, float] = field(default_factory=dict)  # vital workers (poll)
+    af_indoor_essential: Dict[str, float] = field(
+        default_factory=dict
+    )  # armed forces (indoor essential)
+    af_essential: Dict[str, float] = field(
+        default_factory=dict
+    )  # armed forces (essential)
+    iew_pc: Dict[str, float] = field(
+        default_factory=dict
+    )  # indoor essential workers (percentage)
+    ew_pc: Dict[str, float] = field(
+        default_factory=dict
+    )  # essential workers (percentage)
+    ivw_pc: Dict[str, float] = field(
+        default_factory=dict
+    )  # indoor vital workers (percentage)
+    vw_pc: Dict[str, float] = field(default_factory=dict)  # vital workers (percentage)
+    af_indoor_essential_pc: Dict[str, float] = field(
+        default_factory=dict
+    )  # armed forces (indoor essential) (percentage)
+    af_essential_pc: Dict[str, float] = field(
+        default_factory=dict
+    )  # armed forces (essential) (percentage)
 
 
 def compute_worker_dicts(
@@ -1320,12 +1337,16 @@ def compute_group_workers_and_cadr(
         weights = apply_group_overlaps(weights_template, overlaps)
         poll_w = weights["ISCO_08_PollWeights"].to_dict()
         ilo_w = weights["ISCO_08_ILOWeights"].to_dict()
+        poll_w_total = weights["ISCO_08_PollWeights_Total"].to_dict()
+        ilo_w_total = weights["ISCO_08_ILOWeights_Total"].to_dict()
         code_to_group = weights["Group"].to_dict()
 
         group_iew = {g: 0.0 for g in GROUP_OVERLAP}
         group_ivw = {g: 0.0 for g in GROUP_OVERLAP}
+        group_ew = {g: 0.0 for g in GROUP_OVERLAP}
+        group_vw = {g: 0.0 for g in GROUP_OVERLAP}
         coded_emp = 0.0
-        iew_coded = ivw_coded = 0.0
+        iew_coded = ivw_coded = ew_coded = vw_coded = 0.0
 
         for code, employment in emp.items():
             code_str = str(code).strip()
@@ -1345,16 +1366,23 @@ def compute_group_workers_and_cadr(
                 contrib = employment * w if pd.notna(w) else 0.0
                 group_iew[group] += contrib
                 iew_coded += contrib
+            if code_str in poll_w_total:
+                w = poll_w_total[code_str]
+                contrib = employment * w if pd.notna(w) else 0.0
+                group_vw[group] += contrib
+                vw_coded += contrib
+            if code_str in ilo_w_total:
+                w = ilo_w_total[code_str]
+                contrib = employment * w if pd.notna(w) else 0.0
+                group_ew[group] += contrib
+                ew_coded += contrib
 
         nec_emp = emp.get("Not")
-        if (
-            nec_emp is not None
-            and pd.notna(nec_emp)
-            and nec_emp > 0
-            and coded_emp > 0
-        ):
+        if nec_emp is not None and pd.notna(nec_emp) and nec_emp > 0 and coded_emp > 0:
             avg_iew = iew_coded / coded_emp
             avg_ivw = ivw_coded / coded_emp
+            avg_ew = ew_coded / coded_emp
+            avg_vw = vw_coded / coded_emp
             for group in GROUP_OVERLAP:
                 if iew_coded > 0:
                     group_iew[group] += (
@@ -1364,12 +1392,19 @@ def compute_group_workers_and_cadr(
                     group_ivw[group] += (
                         nec_emp * avg_ivw * (group_ivw[group] / ivw_coded)
                     )
+                if ew_coded > 0:
+                    group_ew[group] += nec_emp * avg_ew * (group_ew[group] / ew_coded)
+                if vw_coded > 0:
+                    group_vw[group] += nec_emp * avg_vw * (group_vw[group] / vw_coded)
 
         for group in GROUP_OVERLAP:
             meta = group_meta.loc[group]
             scaled_eca = float(meta["eca_ls_per_person"]) * scale_factor
-            indoor_essential = group_iew[group] / tot * float(lf)
-            indoor_vital = group_ivw[group] / tot * float(lf)
+            scale = float(lf) / tot
+            indoor_essential = group_iew[group] * scale
+            indoor_vital = group_ivw[group] * scale
+            essential = group_ew[group] * scale
+            vital = group_vw[group] * scale
             rows.append(
                 {
                     "Country Name": country,
@@ -1378,6 +1413,8 @@ def compute_group_workers_and_cadr(
                     "occupational_group": group,
                     "occupancy_group": meta["occupancy_group"],
                     "occupancy_category": meta["occupancy_category"],
+                    "Essential Workers": essential,
+                    "Vital Workers": vital,
                     "Indoor Essential Workers": indoor_essential,
                     "Indoor Vital Workers": indoor_vital,
                     SCALED_ECA_COL: scaled_eca,
@@ -1387,6 +1424,75 @@ def compute_group_workers_and_cadr(
             )
 
     return pd.DataFrame(rows)
+
+
+def summarize_group_indoor_range_compression(
+    group_df: pd.DataFrame,
+    lf_df: pd.DataFrame,
+    *,
+    lf_col: str = "Labour Force (2024)",
+) -> pd.DataFrame:
+    """Per occupational group, compare country share ranges total vs indoor.
+
+    Uses only countries present in ``group_df`` (those with ILO ISCO employment).
+    Shares are group worker counts divided by that country's labour force,
+    expressed as percent. A large negative ``% change in range`` for Food
+    (and a large total range) supports outdoor/agricultural Food employment
+    driving cross-country dispersion in total essential/vital shares.
+    """
+    if group_df.empty:
+        return pd.DataFrame()
+
+    lf_lookup = lf_df.set_index("Country Code")[lf_col]
+    merged = group_df.merge(
+        lf_lookup.rename("Labour Force").reset_index(),
+        on="Country Code",
+        how="inner",
+    )
+    merged = merged[merged["Labour Force"] > 0].copy()
+
+    pairs = (
+        ("Essential", "Essential Workers", "Indoor Essential Workers"),
+        ("Vital", "Vital Workers", "Indoor Vital Workers"),
+    )
+    rows: list[dict[str, Any]] = []
+    for group, gdf in merged.groupby("occupational_group", sort=True):
+        row: dict[str, Any] = {"occupational_group": group}
+        for series_label, total_col, indoor_col in pairs:
+            total_pct = 100.0 * gdf[total_col] / gdf["Labour Force"]
+            indoor_pct = 100.0 * gdf[indoor_col] / gdf["Labour Force"]
+            outdoor_pct = total_pct - indoor_pct
+            total_range = float(total_pct.max() - total_pct.min())
+            indoor_range = float(indoor_pct.max() - indoor_pct.min())
+            delta = indoor_range - total_range
+            rel = (delta / total_range * 100.0) if total_range else float("nan")
+            pm = pitman_morgan_variance_test(total_pct, indoor_pct)
+            rel_spread = paired_relative_spread_stats(total_pct, indoor_pct)
+            row[f"{series_label} total range (pp)"] = total_range
+            row[f"{series_label} indoor range (pp)"] = indoor_range
+            row[f"{series_label} Δ range (pp)"] = delta
+            row[f"{series_label} % change in range"] = rel
+            row[f"{series_label} total SD (pp)"] = pm["sd_x"]
+            row[f"{series_label} indoor SD (pp)"] = pm["sd_y"]
+            row[f"{series_label} total CV"] = rel_spread["cv_x"]
+            row[f"{series_label} indoor CV"] = rel_spread["cv_y"]
+            row[f"{series_label} CV ratio (indoor/total)"] = rel_spread[
+                "cv_ratio_y_over_x"
+            ]
+            row[f"{series_label} p (indoor SD < total)"] = pm["p_y_smaller"]
+            row[f"{series_label} p (indoor log-SD < total)"] = rel_spread[
+                "p_log_y_smaller"
+            ]
+            row[f"{series_label} mean outdoor % of LF"] = float(outdoor_pct.mean())
+        rows.append(row)
+
+    out = pd.DataFrame(rows).set_index("occupational_group")
+    return out.sort_values("Essential Δ range (pp)", ascending=True)
+
+
+# ---------------------------------------------------------------------------
+# Country CADR attachment
+# ---------------------------------------------------------------------------
 
 
 def attach_country_cadr_from_groups(
@@ -1445,8 +1551,9 @@ def compute_global_worker_summary(
     Returns
     -------
     DataFrame
-        Indexed by worker category with columns ``Workers`` (absolute count)
-        and ``% of Labour Force``.
+        Indexed by worker category with columns ``Workers`` (absolute count),
+        ``% of Labour Force`` (global share), and the min/max country-level
+        shares ``Country min %`` / ``Country max %``.
     """
     global_lf = lf_df[lf_col].sum(skipna=True)
     essential = lf_df["Essential Workers"].sum(skipna=True)
@@ -1464,15 +1571,510 @@ def compute_global_worker_summary(
         "Indoor vital workers": indoor_vital,
         "Outdoor vital workers": outdoor_vital,
     }
+
+    # Country-level shares are stored as fractions; convert to percent for display.
+    country_pct = {
+        "Essential workers": lf_df["%Essential Workers"] * 100.0,
+        "Indoor essential workers": lf_df["%Indoor Essential Workers"] * 100.0,
+        "Outdoor essential workers": (
+            lf_df["%Essential Workers"] - lf_df["%Indoor Essential Workers"]
+        )
+        * 100.0,
+        "Vital workers": lf_df["%Vital Workers"] * 100.0,
+        "Indoor vital workers": lf_df["%Indoor Vital Workers"] * 100.0,
+        "Outdoor vital workers": (
+            lf_df["%Vital Workers"] - lf_df["%Indoor Vital Workers"]
+        )
+        * 100.0,
+    }
+
     summary = pd.DataFrame(
         {
             "Workers": rows,
             "% of Labour Force": {k: 100 * v / global_lf for k, v in rows.items()},
+            "Country min %": {k: s.min(skipna=True) for k, s in country_pct.items()},
+            "Country max %": {k: s.max(skipna=True) for k, s in country_pct.items()},
         }
     )
     summary.index.name = "Category"
     summary.attrs["labour_force"] = global_lf
     return summary
+
+
+WORKER_PCT_RANK_COLUMNS: tuple[tuple[str, str], ...] = (
+    ("%Essential Workers", "% Essential"),
+    ("%Indoor Essential Workers", "% Indoor essential"),
+    ("%Vital Workers", "% Vital"),
+    ("%Indoor Vital Workers", "% Indoor vital"),
+)
+
+
+def rank_countries_by_worker_pct(
+    lf_df: pd.DataFrame,
+    *,
+    n: int = 10,
+    columns: tuple[tuple[str, str], ...] = WORKER_PCT_RANK_COLUMNS,
+    name_col: str = "Country Name",
+    code_col: str = "Country Code",
+) -> Dict[str, tuple[pd.DataFrame, pd.DataFrame]]:
+    """Top and bottom ``n`` countries for each worker-share column.
+
+    Returns a dict keyed by display label, each value a ``(top, bottom)``
+    pair of DataFrames with columns ``Country Name``, ``Country Code``, and
+    the share as a percent (0–100).
+    """
+    rankings: Dict[str, tuple[pd.DataFrame, pd.DataFrame]] = {}
+    for col, label in columns:
+        ranked = (
+            lf_df[[name_col, code_col, col]]
+            .dropna(subset=[col])
+            .assign(**{label: lf_df[col] * 100.0})
+            .drop(columns=[col])
+            .sort_values(label, ascending=False)
+        )
+        top = ranked.head(n).reset_index(drop=True)
+        bottom = (
+            ranked.tail(n).sort_values(label, ascending=True).reset_index(drop=True)
+        )
+        rankings[label] = (top, bottom)
+    return rankings
+
+
+def pitman_morgan_variance_test(
+    x: np.ndarray | pd.Series,
+    y: np.ndarray | pd.Series,
+) -> dict[str, float]:
+    """Pitman–Morgan test of equal variances for paired observations.
+
+    Tests ``H0: Var(X) = Var(Y)`` via ``Corr(X+Y, X-Y) = 0`` (Pitman 1939;
+    Morgan 1939), using :func:`scipy.stats.pearsonr`. Also returns one-sided
+    ``p_y_smaller`` for ``Var(Y) < Var(X)``.
+    """
+    xa = np.asarray(x, dtype=float)
+    ya = np.asarray(y, dtype=float)
+    mask = np.isfinite(xa) & np.isfinite(ya)
+    xa, ya = xa[mask], ya[mask]
+    n = int(xa.size)
+    empty = {
+        "n": float(n),
+        "sd_x": float("nan"),
+        "sd_y": float("nan"),
+        "variance_ratio_y_over_x": float("nan"),
+        "t_stat": float("nan"),
+        "p_two_sided": float("nan"),
+        "p_y_smaller": float("nan"),
+    }
+    if n < 3:
+        return empty
+
+    sd_x = float(np.std(xa, ddof=1))
+    sd_y = float(np.std(ya, ddof=1))
+    var_ratio = (sd_y * sd_y / (sd_x * sd_x)) if sd_x > 0 else float("nan")
+
+    # H0: equal variances ⇔ Corr(X+Y, X-Y) = 0.
+    r, p_two = stats.pearsonr(xa + ya, xa - ya)
+    # One-sided H1: Var(Y) < Var(X) ⇔ r > 0.
+    p_y_smaller = (p_two / 2.0) if r > 0 else (1.0 - p_two / 2.0)
+    t_stat = r * np.sqrt((n - 2) / (1.0 - r * r)) if abs(r) < 1 else float("nan")
+
+    return {
+        "n": float(n),
+        "sd_x": sd_x,
+        "sd_y": sd_y,
+        "variance_ratio_y_over_x": float(var_ratio),
+        "t_stat": float(t_stat),
+        "p_two_sided": float(p_two),
+        "p_y_smaller": float(p_y_smaller),
+    }
+
+
+def paired_relative_spread_stats(
+    x: np.ndarray | pd.Series,
+    y: np.ndarray | pd.Series,
+) -> dict[str, float]:
+    """Relative-spread comparison for paired positive shares.
+
+    Reports coefficients of variation (``CV = SD / mean``) and a
+    Pitman–Morgan test on ``log(X)`` vs ``log(Y)``, which compares
+    multiplicative / relative dispersion rather than absolute SD.
+    """
+    xa = np.asarray(x, dtype=float)
+    ya = np.asarray(y, dtype=float)
+    mask = np.isfinite(xa) & np.isfinite(ya) & (xa > 0) & (ya > 0)
+    xa, ya = xa[mask], ya[mask]
+    n = int(xa.size)
+    empty = {
+        "n": float(n),
+        "mean_x": float("nan"),
+        "mean_y": float("nan"),
+        "cv_x": float("nan"),
+        "cv_y": float("nan"),
+        "cv_ratio_y_over_x": float("nan"),
+        "p_log_two_sided": float("nan"),
+        "p_log_y_smaller": float("nan"),
+    }
+    if n < 3:
+        return empty
+
+    mean_x = float(np.mean(xa))
+    mean_y = float(np.mean(ya))
+    sd_x = float(np.std(xa, ddof=1))
+    sd_y = float(np.std(ya, ddof=1))
+    cv_x = sd_x / mean_x if mean_x > 0 else float("nan")
+    cv_y = sd_y / mean_y if mean_y > 0 else float("nan")
+    cv_ratio = cv_y / cv_x if cv_x and np.isfinite(cv_x) and cv_x > 0 else float("nan")
+
+    log_pm = pitman_morgan_variance_test(np.log(xa), np.log(ya))
+    return {
+        "n": float(n),
+        "mean_x": mean_x,
+        "mean_y": mean_y,
+        "cv_x": float(cv_x),
+        "cv_y": float(cv_y),
+        "cv_ratio_y_over_x": float(cv_ratio),
+        "p_log_two_sided": log_pm["p_two_sided"],
+        "p_log_y_smaller": log_pm["p_y_smaller"],
+    }
+
+
+def summarize_indoor_range_compression(
+    lf_df: pd.DataFrame,
+) -> pd.DataFrame:
+    """Compare country-level share ranges for total vs indoor worker categories.
+
+    For each of Essential and Vital, reports the country min–max span (in
+    percentage points) for the total share and the indoor share, then the
+    absolute and relative change in that span when restricting to indoor
+    workers. A negative ``% change in range`` means indoor shares are more
+    similar across countries than total shares.
+
+    Absolute spread: country-level SDs and Pitman–Morgan on the raw shares
+    (``p (indoor SD < total)``).
+
+    Relative spread: coefficients of variation (SD/mean) and Pitman–Morgan
+    on log shares (``p (indoor log-SD < total)``), which asks whether
+    multiplicative dispersion shrinks after means fall.
+    """
+    pairs = (
+        (
+            "Essential → Indoor essential",
+            "%Essential Workers",
+            "%Indoor Essential Workers",
+        ),
+        (
+            "Vital → Indoor vital",
+            "%Vital Workers",
+            "%Indoor Vital Workers",
+        ),
+    )
+    rows: list[dict[str, Any]] = []
+    for label, total_col, indoor_col in pairs:
+        paired = lf_df[[total_col, indoor_col]].dropna()
+        total_pct = paired[total_col] * 100.0
+        indoor_pct = paired[indoor_col] * 100.0
+        total_range = float(total_pct.max() - total_pct.min())
+        indoor_range = float(indoor_pct.max() - indoor_pct.min())
+        delta = indoor_range - total_range
+        rel = (delta / total_range * 100.0) if total_range else float("nan")
+        pm = pitman_morgan_variance_test(total_pct, indoor_pct)
+        rel_spread = paired_relative_spread_stats(total_pct, indoor_pct)
+        rows.append(
+            {
+                "Transition": label,
+                "n countries": int(pm["n"]),
+                "Total country min %": float(total_pct.min()),
+                "Total country max %": float(total_pct.max()),
+                "Total range (pp)": total_range,
+                "Total SD (pp)": pm["sd_x"],
+                "Total mean %": rel_spread["mean_x"],
+                "Total CV": rel_spread["cv_x"],
+                "Indoor country min %": float(indoor_pct.min()),
+                "Indoor country max %": float(indoor_pct.max()),
+                "Indoor range (pp)": indoor_range,
+                "Indoor SD (pp)": pm["sd_y"],
+                "Indoor mean %": rel_spread["mean_y"],
+                "Indoor CV": rel_spread["cv_y"],
+                "Δ range (pp)": delta,
+                "% change in range": rel,
+                "Variance ratio (indoor/total)": pm["variance_ratio_y_over_x"],
+                "CV ratio (indoor/total)": rel_spread["cv_ratio_y_over_x"],
+                "Pitman–Morgan p (two-sided)": pm["p_two_sided"],
+                "p (indoor SD < total)": pm["p_y_smaller"],
+                "p (indoor log-SD < total)": rel_spread["p_log_y_smaller"],
+            }
+        )
+    return pd.DataFrame(rows).set_index("Transition")
+
+
+# ---------------------------------------------------------------------------
+# Food share of essential/vital workforce vs GDP per capita
+# ---------------------------------------------------------------------------
+
+GDP_PPP_COL = "GDP per capita, PPP (current international $)"
+GDP_USD_COL = "GDP per capita (current US$)"
+DEFAULT_GDP_PATH = ESSENTIAL_WORKERS_DATA / "GDP_per_capita_WDI.csv"
+
+# Labour-force shares in EssentialWorkersByCountry (fractions 0–1).
+LF_SHARE_COLS = (
+    "%Essential Workers",
+    "%Indoor Essential Workers",
+    "%Vital Workers",
+    "%Indoor Vital Workers",
+)
+
+# Food counts / category totals from EssentialWorkersByGroup.
+FOOD_SHARE_COLS = (
+    "Food % of Essential Workers",
+    "Food % of Indoor Essential Workers",
+    "Food % of Vital Workers",
+    "Food % of Indoor Vital Workers",
+)
+
+_GROUP_COUNT_COLS = (
+    "Essential Workers",
+    "Vital Workers",
+    "Indoor Essential Workers",
+    "Indoor Vital Workers",
+)
+
+# Share of the essential / vital (indoor) workforce in each occupational group.
+# Order matches ``_GROUP_COUNT_COLS``.
+GROUP_COMPOSITION_SHARE_COLS = (
+    "% of Essential Workers",
+    "% of Vital Workers",
+    "% of Indoor Essential Workers",
+    "% of Indoor Vital Workers",
+)
+
+
+def _group_composition_from_counts(counts: pd.DataFrame) -> pd.DataFrame:
+    """Attach within-scope composition shares to aggregated group counts.
+
+    ``counts`` must include ``occupational_group`` and the four worker-count
+    columns. Scope totals are the sum over groups in ``counts`` (caller must
+    already restrict to one country, one region, or the world).
+    """
+    out = counts.copy()
+    for count_col, share_col in zip(_GROUP_COUNT_COLS, GROUP_COMPOSITION_SHARE_COLS):
+        total = float(out[count_col].sum())
+        out[share_col] = out[count_col] / total if total > 0 else float("nan")
+    # Stable group order matching GROUP_OVERLAP.
+    order = {g: i for i, g in enumerate(GROUP_OVERLAP)}
+    out["_ord"] = out["occupational_group"].map(order)
+    out = out.sort_values("_ord").drop(columns="_ord").reset_index(drop=True)
+    return out
+
+
+def summarize_group_composition(
+    group_df: pd.DataFrame,
+    *,
+    by: str | None = None,
+) -> pd.DataFrame:
+    """Occupational-group breakdown of essential / vital workforces.
+
+    Worker-weighted composition: each group's share is
+    ``group_count / sum(groups)`` within the chosen scope.
+
+    Parameters
+    ----------
+    group_df:
+        Per-country × group counts (e.g. ``EssentialWorkersByGroup.csv``).
+    by:
+        ``None`` — one global composition (ILO-employment countries only).
+        ``"Region"`` — composition within each UN region.
+        ``"Country"`` — composition within each country (adds share columns
+        to country × group rows).
+
+    Returns
+    -------
+    DataFrame with count columns plus :data:`GROUP_COMPOSITION_SHARE_COLS`
+    (fractions 0–1). For ``by="Country"`` / ``"Region"``, identifier columns
+    are retained.
+    """
+    if group_df.empty:
+        cols = ["occupational_group", *_GROUP_COUNT_COLS, *GROUP_COMPOSITION_SHARE_COLS]
+        if by == "Region":
+            cols = ["Region", *cols]
+        elif by == "Country":
+            cols = ["Country Name", "Country Code", "Region", *cols]
+        return pd.DataFrame(columns=cols)
+
+    if by is None:
+        agg = group_df.groupby("occupational_group", as_index=False)[
+            list(_GROUP_COUNT_COLS)
+        ].sum()
+        return _group_composition_from_counts(agg)
+
+    if by == "Region":
+        rows: list[pd.DataFrame] = []
+        for region, gdf in group_df.groupby("Region", sort=True):
+            agg = gdf.groupby("occupational_group", as_index=False)[
+                list(_GROUP_COUNT_COLS)
+            ].sum()
+            part = _group_composition_from_counts(agg)
+            part.insert(0, "Region", region)
+            rows.append(part)
+        return (
+            pd.concat(rows, ignore_index=True)
+            if rows
+            else summarize_group_composition(group_df.iloc[0:0], by="Region")
+        )
+
+    if by == "Country":
+        id_cols = [
+            c
+            for c in ("Country Name", "Country Code", "Region")
+            if c in group_df.columns
+        ]
+        rows: list[pd.DataFrame] = []
+        for keys, gdf in group_df.groupby(id_cols, sort=False):
+            if not isinstance(keys, tuple):
+                keys = (keys,)
+            meta = dict(zip(id_cols, keys))
+            part = _group_composition_from_counts(
+                gdf[["occupational_group", *_GROUP_COUNT_COLS]].copy()
+            )
+            for col in reversed(id_cols):
+                part.insert(0, col, meta[col])
+            rows.append(part)
+        return pd.concat(rows, ignore_index=True)
+
+    raise ValueError("by must be None, 'Region', or 'Country'")
+
+
+def food_share_of_workforce(group_df: pd.DataFrame) -> pd.DataFrame:
+    """Per country, Food workers as a fraction of essential / vital totals.
+
+    Denominators are the sum of all occupational groups in ``group_df`` for
+    that country (matches country-level Essential/Vital counts where group
+    data exist). Only countries present in ``group_df`` are returned.
+    """
+    id_cols = [
+        c for c in ("Country Name", "Country Code", "Region") if c in group_df.columns
+    ]
+    if group_df.empty:
+        return pd.DataFrame(columns=[*id_cols, *FOOD_SHARE_COLS])
+
+    shares = summarize_group_composition(group_df, by="Country")
+    food = shares.loc[shares["occupational_group"] == "Food"].copy()
+    food = food.rename(
+        columns={
+            "% of Essential Workers": "Food % of Essential Workers",
+            "% of Vital Workers": "Food % of Vital Workers",
+            "% of Indoor Essential Workers": "Food % of Indoor Essential Workers",
+            "% of Indoor Vital Workers": "Food % of Indoor Vital Workers",
+        }
+    )
+    return food[[*id_cols, *FOOD_SHARE_COLS]].reset_index(drop=True)
+
+
+def load_gdp_per_capita(
+    path: Path | str | None = None,
+) -> pd.DataFrame:
+    """Load World Bank WDI GDP per capita (latest year per country).
+
+    Source file is built from indicators ``NY.GDP.PCAP.PP.CD`` (PPP) and
+    ``NY.GDP.PCAP.CD`` (current USD). Prefer PPP for cross-country income
+    comparisons.
+    """
+    gdp_path = Path(path) if path is not None else DEFAULT_GDP_PATH
+    return pd.read_csv(gdp_path)
+
+
+def correlate_share_with_gdp(
+    df: pd.DataFrame,
+    share_col: str,
+    gdp_col: str = GDP_PPP_COL,
+) -> dict[str, float]:
+    """Spearman and Pearson(log GDP) association between a share and GDP."""
+    sub = df[[share_col, gdp_col]].apply(pd.to_numeric, errors="coerce").dropna()
+    sub = sub[(sub[gdp_col] > 0) & np.isfinite(sub[share_col])]
+    n = int(len(sub))
+    empty = {
+        "n": float(n),
+        "spearman_rho": float("nan"),
+        "spearman_p": float("nan"),
+        "pearson_log_gdp_r": float("nan"),
+        "pearson_log_gdp_p": float("nan"),
+    }
+    if n < 3:
+        return empty
+
+    rho, rho_p = stats.spearmanr(sub[gdp_col], sub[share_col])
+    log_gdp = np.log(sub[gdp_col].to_numpy(dtype=float))
+    r, r_p = stats.pearsonr(log_gdp, sub[share_col].to_numpy(dtype=float))
+    return {
+        "n": float(n),
+        "spearman_rho": float(rho),
+        "spearman_p": float(rho_p),
+        "pearson_log_gdp_r": float(r),
+        "pearson_log_gdp_p": float(r_p),
+    }
+
+
+def summarize_worker_shares_vs_gdp(
+    lf_df: pd.DataFrame,
+    group_df: pd.DataFrame | None = None,
+    gdp_df: pd.DataFrame | None = None,
+    *,
+    gdp_col: str = GDP_PPP_COL,
+) -> tuple[pd.DataFrame, pd.DataFrame]:
+    """Join worker shares to GDP and return (merged table, correlation summary).
+
+    Correlation summary covers:
+
+    * labour-force shares: essential, indoor essential, vital, indoor vital
+    * Food as a share of essential / vital (and indoor) workforce, when
+      ``group_df`` is provided
+
+    Primary association is Spearman (rank) vs GDP; Pearson on ``log(GDP)``
+    is also reported. Negative rho supports larger shares in lower-income
+    countries.
+    """
+    gdp = load_gdp_per_capita() if gdp_df is None else gdp_df.copy()
+    keep = ["Country Code", gdp_col]
+    for year_col in ("GDP Year (PPP)", "GDP Year (USD)"):
+        if year_col in gdp.columns:
+            keep.append(year_col)
+    if GDP_USD_COL in gdp.columns and GDP_USD_COL != gdp_col:
+        keep.append(GDP_USD_COL)
+    gdp = gdp[[c for c in keep if c in gdp.columns]].drop_duplicates("Country Code")
+
+    id_cols = [
+        c for c in ("Country Name", "Country Code", "Region") if c in lf_df.columns
+    ]
+    share_cols = [c for c in LF_SHARE_COLS if c in lf_df.columns]
+    merged = lf_df[id_cols + share_cols].merge(gdp, on="Country Code", how="left")
+
+    food_cols: list[str] = []
+    if group_df is not None and not group_df.empty:
+        food = food_share_of_workforce(group_df)
+        food_cols = [c for c in FOOD_SHARE_COLS if c in food.columns]
+        merged = merged.merge(
+            food[["Country Code"] + food_cols], on="Country Code", how="left"
+        )
+
+    rows: list[dict[str, Any]] = []
+    for col in share_cols + food_cols:
+        stats_row = correlate_share_with_gdp(merged, col, gdp_col=gdp_col)
+        # Display labour-force shares and food shares as percent in the label.
+        if col.startswith("%"):
+            label = f"{col} (% of labour force)"
+        else:
+            label = col
+        rows.append(
+            {
+                "Share": label,
+                "column": col,
+                "n": stats_row["n"],
+                "Spearman ρ": stats_row["spearman_rho"],
+                "Spearman p": stats_row["spearman_p"],
+                "Pearson r (log GDP)": stats_row["pearson_log_gdp_r"],
+                "Pearson p (log GDP)": stats_row["pearson_log_gdp_p"],
+            }
+        )
+    summary = pd.DataFrame(rows)
+    return merged, summary
 
 
 # ---------------------------------------------------------------------------
@@ -1661,7 +2263,9 @@ def run_pipeline(
         Where to write CSV outputs when ``write`` is ``True``.
     write:
         If ``True``, write ``EssentialWorkersByCountry.csv``,
-        ``EssentialWorkersByRegion.csv``, ``Essential_Workers_Validation.csv``,
+        ``EssentialWorkersByGroup.csv``, group-composition CSVs (global /
+        region / country), ``EssentialWorkersByRegion.csv``,
+        ``Essential_Workers_Validation.csv``,
         ``Group_Overlap_Calibration.csv``, and
         ``Onsite_Housing_Worker_Requirements.csv`` to ``results_dir``.
 
@@ -1781,6 +2385,17 @@ def run_pipeline(
         results_dir.mkdir(parents=True, exist_ok=True)
         lf_df.to_csv(results_dir / "EssentialWorkersByCountry.csv", index=False)
         group_df.to_csv(results_dir / "EssentialWorkersByGroup.csv", index=False)
+        summarize_group_composition(group_df).to_csv(
+            results_dir / "EssentialWorkersByGroupComposition_Global.csv", index=False
+        )
+        summarize_group_composition(group_df, by="Region").to_csv(
+            results_dir / "EssentialWorkersByGroupComposition_ByRegion.csv",
+            index=False,
+        )
+        summarize_group_composition(group_df, by="Country").to_csv(
+            results_dir / "EssentialWorkersByGroupComposition_ByCountry.csv",
+            index=False,
+        )
         regional_df.to_csv(results_dir / "EssentialWorkersByRegion.csv", index=False)
         val_out_cols = [
             "Country Name",

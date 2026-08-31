@@ -6,14 +6,15 @@ dependencies:
   - python=3.11
   - pandas
   - numpy
+  - scipy
   - matplotlib
   - matplotlib-inline
+  - statsmodels
+  - requests
   - geopandas
-  - plotly
   - openpyxl
   - xlrd
   - country_converter
-  - uncertainties
   - jupyter
   - notebook
   - nbconvert

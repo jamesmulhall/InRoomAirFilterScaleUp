@@ -1,0 +1,19 @@
+setting,value,units,note,source
+n_draws,1000.0,count,Monte Carlo sample size.,
+weeks,26.0,weeks,Simulation horizon.,
+random_seed,32649.0,,Set for reproducibility.,
+uncertainty_interval,50.0,percent,Width of the uncertainty interval reported on coverage and drawn on the figures.,
+start_delay_weeks,2.0,weeks,Uniform production start delay applied to all countries.,
+utilisation_baseline,0.75,fraction,"Methods 2.3.4, factories run at 75 percent and rise to 100 percent.",https://www.federalreserve.gov/releases/g17/current/default.htm
+utilisation_ramp_weeks,13.0,weeks,"Methods 2.3.4, three months.",
+inventory_weeks,6.0,weeks,Weeks of production held as manufacturer and retailer inventory.,
+inventory_release_weeks,2.0,weeks,Weeks over which that inventory becomes available.,
+repurposing_release_weeks,12.0,weeks,Weeks over which repurposed units are recovered and deployed.,
+baghouse_release_weeks,4.0,weeks,"Weeks over which bags recovered from idle coal plants are stripped, adapted and deployed.",
+baghouse_gradient,1655.17,L/s per MW,"Fitted in linear_models.py. R2 = 0.92, n = 10.",data/scale_up/coal_plant_airflow.csv
+baghouse_intercept_l_per_s,39019.8,L/s,"Fitted in linear_models.py. Per-plant intercept, so it is only applied to countries with non-zero coal capacity.",data/scale_up/coal_plant_airflow.csv
+mva_exponent_b,1.019,exponent,"Fitted in linear_models.py. Standard error 0.110, R2 = 0.892, n = 40.",data/scale_up/allocator_fit_data.csv
+min_country_filter_production,200000.0,units/year,"Methods 2.3.1 minimum national threshold, tested against each country's share of total panel filter production across all MERV bands.",https://scoris.eu/company/EE/14610854/filter-plus-ou/
+filters_per_cr_box,4.0,filters,Methods equation 5.,
+pc_fans_per_cr_box,6.0,fans,Methods equation 5.,
+scenario3_ramp_weeks,8.0,weeks,Methods 2.3.4.,
