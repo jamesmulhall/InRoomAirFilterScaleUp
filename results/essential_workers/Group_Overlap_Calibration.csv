@@ -1691,6 +1691,15 @@ Chad,TCD,Manual,0.335,0.3747807407827234,0.03978074078272337,,neighbour_backfill
 Chad,TCD,Cleaning,0.485,0.5158076413580489,0.03080764135804892,,neighbour_backfill,0.05982066283116299,,,,,,
 Chad,TCD,Tech,0.32,0.3606780507251908,0.04067805072519082,,neighbour_backfill,0.05982066283116299,,,,,,
 Chad,TCD,ArmedForces,0.4,0.4,0.0,,neighbour_backfill,0.05982066283116299,,,,,,
+Taiwan,TWN,Food,0.895,0.895,0.0,,global_fallback,0.0,,,,,,global_fallback
+Taiwan,TWN,Health,0.819,0.819,0.0,,global_fallback,0.0,,,,,,global_fallback
+Taiwan,TWN,Retail,0.876,0.876,0.0,,global_fallback,0.0,,,,,,global_fallback
+Taiwan,TWN,Security,0.846,0.846,0.0,,global_fallback,0.0,,,,,,global_fallback
+Taiwan,TWN,Transport,0.869,0.869,0.0,,global_fallback,0.0,,,,,,global_fallback
+Taiwan,TWN,Manual,0.335,0.335,0.0,,global_fallback,0.0,,,,,,global_fallback
+Taiwan,TWN,Cleaning,0.485,0.485,0.0,,global_fallback,0.0,,,,,,global_fallback
+Taiwan,TWN,Tech,0.32,0.32,0.0,,global_fallback,0.0,,,,,,global_fallback
+Taiwan,TWN,ArmedForces,0.4,0.4,0.0,,global_fallback,0.0,,,,,,global_fallback
 Togo,TGO,Food,0.895,0.7979565817251452,-0.09704341827485485,1341793.0,ilo_calibrated,0.10842840030710041,63.47,71.1733120583461,63.470000000000006,7.7033120583461,7.105427357601002e-15,ok
 Togo,TGO,Health,0.819,0.7301971401484847,-0.08880285985151526,33553.0,ilo_calibrated,0.10842840030710041,63.47,71.1733120583461,63.470000000000006,7.7033120583461,7.105427357601002e-15,ok
 Togo,TGO,Retail,0.876,0.78101672133098,-0.09498327866902001,889831.0,ilo_calibrated,0.10842840030710041,63.47,71.1733120583461,63.470000000000006,7.7033120583461,7.105427357601002e-15,ok

@@ -183,6 +183,20 @@ def test_load_settings_reads_numbers_as_floats(tmp_path):
     assert settings["label"] == "coal baghouse"
 
 
+def test_load_settings_reads_true_false_as_bool(tmp_path):
+    """The cost-adjustment flag is a boolean, not the string 'true'."""
+    path = tmp_path / "settings.csv"
+    pd.DataFrame(
+        [
+            {"setting": "adjust_MVA_by_cost", "value": "true"},
+            {"setting": "other_flag", "value": "False"},
+        ]
+    ).to_csv(path, index=False)
+    settings = sm.load_settings(str(path))
+    assert settings["adjust_MVA_by_cost"] is True
+    assert settings["other_flag"] is False
+
+
 def test_real_settings_cover_everything_the_model_reads():
     """Every setting the model looks up is present in settings.csv."""
     settings = sm.load_settings(REAL_SETTINGS)
@@ -205,6 +219,7 @@ def test_real_settings_cover_everything_the_model_reads():
         "pc_fans_per_cr_box",
         "scenario3_ramp_weeks",
         "uncertainty_interval",
+        "adjust_MVA_by_cost",
     ]
     missing = [name for name in required if name not in settings]
     assert not missing, f"settings.csv is missing: {missing}"
@@ -302,6 +317,91 @@ def test_production_shares_apply_the_exponent():
     df = _country_table([10.0, 100.0])
     shares = sm.production_shares(df, exponent=2.0, min_production=0, total_filters=1e9)
     np.testing.assert_allclose(shares, [100 / 10100, 10000 / 10100])
+
+
+# ---------------------------------------------------------------------------
+# MVA cost adjustment from Comtrade
+# ---------------------------------------------------------------------------
+
+
+def _write_comtrade(path, rows):
+    """Write a tiny Comtrade extract with the columns the loader reads."""
+    pd.DataFrame(rows).to_excel(path, index=False)
+    return str(path)
+
+
+def test_filter_export_value_per_kg_is_value_over_weight(tmp_path):
+    """USD/kg is primaryValue / netWgt, dropping rows with no weight."""
+    path = _write_comtrade(
+        tmp_path / "comtrade.xlsx",
+        [
+            {
+                "reporterISO": "AAA",
+                "refYear": 2024,
+                "primaryValue": 100.0,
+                "netWgt": 4.0,
+            },
+            {
+                "reporterISO": "BBB",
+                "refYear": 2024,
+                "primaryValue": 50.0,
+                "netWgt": 0.0,
+            },
+        ],
+    )
+    out = sm.load_filter_export_value_per_kg(path)
+    assert list(out.iso3) == ["AAA"]
+    assert out.value_per_kg.iloc[0] == pytest.approx(25.0)
+
+
+def test_filter_export_value_per_kg_keeps_the_latest_year(tmp_path):
+    """A reporter with two years keeps only the later one."""
+    path = _write_comtrade(
+        tmp_path / "comtrade.xlsx",
+        [
+            {
+                "reporterISO": "AAA",
+                "refYear": 2023,
+                "primaryValue": 10.0,
+                "netWgt": 1.0,
+            },
+            {
+                "reporterISO": "AAA",
+                "refYear": 2024,
+                "primaryValue": 40.0,
+                "netWgt": 2.0,
+            },
+        ],
+    )
+    out = sm.load_filter_export_value_per_kg(path)
+    assert len(out) == 1
+    assert out.value_per_kg.iloc[0] == pytest.approx(20.0)
+
+
+def test_divide_mva_by_export_price_uses_neighbours_then_median():
+    """Missing prices take the SIMILAR_ISO3 neighbour mean, then the median."""
+    df = pd.DataFrame(
+        {
+            "iso3": ["AAA", "BBB", "CCC", "DDD"],
+            "mva_usd": [100.0, 100.0, 100.0, 100.0],
+        }
+    )
+    prices = pd.DataFrame({"iso3": ["AAA", "BBB"], "value_per_kg": [10.0, 30.0]})
+    out = sm.divide_mva_by_export_price(
+        df, prices, similar_iso3={"CCC": ["AAA", "BBB"]}
+    )
+    # AAA: 100/10, BBB: 100/30, CCC neighbour of AAA+BBB = 20, DDD median of
+    # 10, 30, 20 = 20.
+    np.testing.assert_allclose(out.mva_usd, [10.0, 100.0 / 30.0, 5.0, 5.0])
+
+
+def test_real_comtrade_file_has_value_and_weight_columns():
+    """The committed extract is readable and has usable USD/kg rows."""
+    path = REPO_ROOT / "data" / "scale_up" / "comtrade_HS842139.xlsx"
+    out = sm.load_filter_export_value_per_kg(str(path))
+    assert not out.empty
+    assert (out.value_per_kg > 0).all()
+    assert "CHN" in set(out.iso3)
 
 
 # ---------------------------------------------------------------------------
@@ -659,8 +759,10 @@ def test_real_coal_sample_is_either_empty_or_fittable():
 def test_fit_allocator_reproduces_the_mva_exponent():
     """The pooled slope is the exponent b the model allocates production with."""
     fit = lm.fit_allocator(str(REAL_ALLOCATOR))
+    assert fit["prodcom_only"] is False
     pooled = fit["pooled"]
     slope = np.asarray(pooled.params)[1]
+    assert fit["chosen"] is pooled
     assert int(pooled.nobs) == 40
     assert slope == pytest.approx(1.019, abs=0.001)
     assert pooled.rsquared > 0.85
@@ -668,11 +770,26 @@ def test_fit_allocator_reproduces_the_mva_exponent():
     assert abs(slope - 1) < 2 * np.asarray(pooled.bse)[1]
 
 
+def test_fit_allocator_prodcom_only_skips_the_pooled_regression():
+    """With the flag on, b comes from the PRODCOM points alone."""
+    fit = lm.fit_allocator(str(REAL_ALLOCATOR), prodcom_only=True)
+    assert fit["pooled"] is None
+    assert fit["prodcom_only"] is True
+    assert fit["chosen"] is fit["single"]["PRODCOM"]
+    slope = np.asarray(fit["chosen"].params)[1]
+    assert slope == pytest.approx(np.asarray(fit["single"]["PRODCOM"].params)[1])
+    assert int(fit["chosen"].nobs) < 40
+
+
 def test_settings_mva_exponent_matches_the_fit():
     """settings.csv must carry the exponent that linear_models.py fits."""
-    fit = lm.fit_allocator(str(REAL_ALLOCATOR))
-    fitted = round(np.asarray(fit["pooled"].params)[1], 3)
-    assert sm.load_settings(REAL_SETTINGS)["mva_exponent_b"] == pytest.approx(fitted)
+    settings = sm.load_settings(REAL_SETTINGS)
+    fit = lm.fit_allocator(
+        str(REAL_ALLOCATOR),
+        prodcom_only=bool(settings.get("linear_fit_PRODCOM_only")),
+    )
+    fitted = round(np.asarray(fit["chosen"].params)[1], 3)
+    assert settings["mva_exponent_b"] == pytest.approx(fitted)
 
 
 def test_update_settings_rewrites_only_the_fitted_rows(tmp_path):
@@ -717,3 +834,18 @@ def test_update_settings_records_the_provenance_of_each_fit(tmp_path):
     assert rows.loc["baghouse_gradient", "source"] == lm.COAL_FILE
     assert "n = 40" in rows.loc["mva_exponent_b", "note"]
     assert rows.loc["mva_exponent_b", "source"] == lm.ALLOCATOR_FILE
+
+
+def test_update_settings_writes_the_prodcom_slope_when_asked(tmp_path):
+    """PRODCOM-only fits record that provenance and a different b."""
+    path = tmp_path / "settings.csv"
+    pd.read_csv(REAL_SETTINGS).to_csv(path, index=False)
+    coal = {"slope": 1500.0, "intercept": 40000.0, "r_squared": 0.9, "n": 11}
+    fit = lm.fit_allocator(str(REAL_ALLOCATOR), prodcom_only=True)
+    lm.update_settings(coal, fit, str(path))
+
+    rows = pd.read_csv(path).set_index("setting")
+    expected = round(np.asarray(fit["chosen"].params)[1], 3)
+    assert float(rows.loc["mva_exponent_b", "value"]) == pytest.approx(expected)
+    assert "PRODCOM only" in rows.loc["mva_exponent_b", "note"]
+    assert int(fit["chosen"].nobs) != 40

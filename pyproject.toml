@@ -20,6 +20,7 @@ dependencies = [
     "statsmodels>=0.14",
     "country_converter>=1.0",
     "geopandas>=0.13",
+    "cmasher>=1.7",
     "openpyxl>=3.0",
     "xlrd>=2.0.1",
 ]

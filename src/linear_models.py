@@ -6,9 +6,11 @@ here so the whole calculation lives in one place:
 
   1. Coal plant capacity (MW) to baghouse airflow (L/s), from a small sample of
      plants. Used by methods equation 7.
-  2. Filtration output against manufacturing value added, pooling country-level
-     filtration market revenue with Eurostat PRODCOM sold production. The slope
-     is the exponent b in methods equation 3.
+  2. Filtration output against manufacturing value added. By default this pools
+     country-level filtration market revenue with Eurostat PRODCOM sold
+     production. If ``linear_fit_PRODCOM_only`` is set in settings.csv, only
+     the PRODCOM points are used. The slope is the exponent b in methods
+     equation 3.
 
 Running this script writes one plot per model and updates the three fitted rows
 in data/scale_up/settings.csv, which is where the model reads them from.
@@ -23,8 +25,7 @@ import statsmodels.api as sm
 
 # Set up ALLFED plotting style
 plt.style.use(
-    "https://raw.githubusercontent.com/allfed/"
-    "ALLFED-matplotlib-style-sheet/main/ALLFED.mplstyle"
+    "https://raw.githubusercontent.com/allfed/ALLFED-matplotlib-style-sheet/main/ALLFED.mplstyle"
 )
 
 COAL_FILE = "data/scale_up/coal_plant_airflow.csv"
@@ -95,28 +96,27 @@ def plot_coal_airflow(fit, path):
     plt.close(fig)
 
 
-def fit_allocator(path=ALLOCATOR_FILE):
+def fit_allocator(path=ALLOCATOR_FILE, prodcom_only=False):
     """
-    Fit filtration output against MVA, pooled and for each dataset separately.
+    Fit filtration output against MVA.
 
-    The pooled model shares one slope across both datasets and gives each its
-    own intercept, so the slope is not distorted by the difference in levels.
+    The default pooled model shares one slope across both datasets and gives
+    each its own intercept, so the slope is not distorted by the difference
+    in levels. If ``prodcom_only`` is True, that pooled regression is skipped
+    and the slope comes from the PRODCOM points alone.
 
     Arguments:
         path (str): CSV with columns country, dataset, value_usd, mva_usd.
+        prodcom_only (bool): Fit b on PRODCOM only.
 
     Returns:
-        dict: The pooled and single-dataset fits, plus the input data.
+        dict: Single-dataset fits, the input data, and either the pooled or
+            the PRODCOM model as ``chosen``.
     """
     df = pd.read_csv(path)
     df["log_y"] = np.log10(df.value_usd)
     df["log_x"] = np.log10(df.mva_usd)
     df["is_prodcom"] = (df.dataset == "PRODCOM").astype(float)
-
-    pooled = sm.OLS(
-        df.log_y.to_numpy(),
-        sm.add_constant(np.column_stack([df.log_x, df.is_prodcom])),
-    ).fit()
 
     single = {}
     for name in DATASETS:
@@ -125,50 +125,87 @@ def fit_allocator(path=ALLOCATOR_FILE):
             subset.log_y.to_numpy(), sm.add_constant(subset.log_x.to_numpy())
         ).fit()
 
-    return {"pooled": pooled, "single": single, "data": df}
+    if prodcom_only:
+        return {
+            "pooled": None,
+            "single": single,
+            "chosen": single["PRODCOM"],
+            "prodcom_only": True,
+            "data": df,
+        }
+
+    pooled = sm.OLS(
+        df.log_y.to_numpy(),
+        sm.add_constant(np.column_stack([df.log_x, df.is_prodcom])),
+    ).fit()
+    return {
+        "pooled": pooled,
+        "single": single,
+        "chosen": pooled,
+        "prodcom_only": False,
+        "data": df,
+    }
 
 
 def plot_allocator(fit, path):
     """
-    Plot the pooled fit large, with the two single-dataset fits stacked beside it.
+    Plot the fit that supplies b, with the two single-dataset fits beside it.
 
     Arguments:
         fit (dict): Output of fit_allocator.
         path (str): Where to save the figure.
     """
     df = fit["data"]
-    pooled = np.asarray(fit["pooled"].params)
-    intercept, slope, shift = pooled[0], pooled[1], pooled[2]
-
     fig = plt.figure(figsize=(12.5, 5.5))
     grid = fig.add_gridspec(2, 2, width_ratios=[1.9, 1], hspace=0.6, wspace=0.25)
     main = fig.add_subplot(grid[:, 0])
     panels = [fig.add_subplot(grid[0, 1]), fig.add_subplot(grid[1, 1])]
 
     x = np.linspace(df.log_x.min() - 0.12, df.log_x.max() + 0.12, 50)
-    for name, label in DATASETS.items():
-        subset = df[df.dataset == name]
-        main.scatter(subset.log_x, subset.log_y, label=label, zorder=3)
-        main.plot(x, intercept + shift * (name == "PRODCOM") + slope * x, zorder=2)
+    chosen = fit["chosen"]
+    if fit["prodcom_only"]:
+        subset = df[df.dataset == "PRODCOM"]
+        intercept, slope = np.asarray(chosen.params)
+        main.scatter(subset.log_x, subset.log_y, label=DATASETS["PRODCOM"], zorder=3)
+        main.plot(x, intercept + slope * x, zorder=2)
+        main.annotate(
+            f"log$_{{10}}$y = {intercept:.2f} + {slope:.3f}·log$_{{10}}$MVA\n"
+            f"b = {slope:.3f} ± {np.asarray(chosen.bse)[1]:.3f}\n"
+            f"R² = {chosen.rsquared:.3f}",
+            xy=(0.97, 0.04),
+            xycoords="axes fraction",
+            va="bottom",
+            ha="right",
+        )
+        main.set_title(
+            f"PRODCOM-only fit (n = {int(chosen.nobs)})",
+            loc="left",
+        )
+    else:
+        intercept, slope, shift = np.asarray(chosen.params)
+        for name, label in DATASETS.items():
+            subset = df[df.dataset == name]
+            main.scatter(subset.log_x, subset.log_y, label=label, zorder=3)
+            main.plot(x, intercept + shift * (name == "PRODCOM") + slope * x, zorder=2)
+        sign = "+" if shift >= 0 else "-"
+        main.annotate(
+            f"log$_{{10}}$y = {intercept:.2f} {sign} {abs(shift):.2f}·PRODCOM "
+            f"+ {slope:.3f}·log$_{{10}}$MVA\n"
+            f"b = {slope:.3f} ± {np.asarray(chosen.bse)[1]:.3f}\n"
+            f"R² = {chosen.rsquared:.3f}",
+            xy=(0.97, 0.04),
+            xycoords="axes fraction",
+            va="bottom",
+            ha="right",
+        )
+        main.set_title(
+            "Pooled fit — shared slope, dataset-specific intercept "
+            f"(n = {int(chosen.nobs)})",
+            loc="left",
+        )
 
-    sign = "+" if shift >= 0 else "-"
-    main.annotate(
-        f"log$_{{10}}$y = {intercept:.2f} {sign} {abs(shift):.2f}·PRODCOM "
-        f"+ {slope:.3f}·log$_{{10}}$MVA\n"
-        f"b = {slope:.3f} ± {np.asarray(fit['pooled'].bse)[1]:.3f}\n"
-        f"R² = {fit['pooled'].rsquared:.3f}",
-        xy=(0.97, 0.04),
-        xycoords="axes fraction",
-        va="bottom",
-        ha="right",
-    )
     main.set_xlabel("log$_{10}$ manufacturing value added (USD)")
     main.set_ylabel("log$_{10}$ annual value (USD)")
-    main.set_title(
-        "Pooled fit — shared slope, dataset-specific intercept "
-        f"(n = {int(fit['pooled'].nobs)})",
-        loc="left",
-    )
     main.legend(loc="upper left")
 
     for axis, (name, label) in zip(panels, DATASETS.items()):
@@ -212,7 +249,19 @@ def update_settings(coal, allocator, path=SETTINGS_FILE):
     Returns:
         pandas.DataFrame: The rows that were written.
     """
-    pooled = allocator["pooled"]
+    chosen = allocator["chosen"]
+    if allocator["prodcom_only"]:
+        b_note = (
+            f"Fitted in linear_models.py on PRODCOM only. Standard error "
+            f"{np.asarray(chosen.bse)[1]:.3f}, R2 = {chosen.rsquared:.3f}, "
+            f"n = {int(chosen.nobs)}."
+        )
+    else:
+        b_note = (
+            f"Fitted in linear_models.py. Standard error "
+            f"{np.asarray(chosen.bse)[1]:.3f}, R2 = {chosen.rsquared:.3f}, "
+            f"n = {int(chosen.nobs)}."
+        )
     rows = [
         {
             "setting": "baghouse_gradient",
@@ -232,11 +281,9 @@ def update_settings(coal, allocator, path=SETTINGS_FILE):
         },
         {
             "setting": "mva_exponent_b",
-            "value": round(np.asarray(pooled.params)[1], 3),
+            "value": round(np.asarray(chosen.params)[1], 3),
             "units": "exponent",
-            "note": f"Fitted in linear_models.py. Standard error "
-            f"{np.asarray(pooled.bse)[1]:.3f}, R2 = {pooled.rsquared:.3f}, "
-            f"n = {int(pooled.nobs)}.",
+            "note": b_note,
             "source": ALLOCATOR_FILE,
         },
     ]
@@ -264,12 +311,16 @@ def main():
     plot_coal_airflow(coal, os.path.join(RESULTS_DIR, "coal_airflow_fit.png"))
 
     print("\nFitting filtration output against MVA...")
-    allocator = fit_allocator()
-    pooled = allocator["pooled"]
+    from scale_up_model import load_settings
+
+    prodcom_only = bool(load_settings().get("linear_fit_PRODCOM_only"))
+    allocator = fit_allocator(prodcom_only=prodcom_only)
+    chosen = allocator["chosen"]
+    label = "PRODCOM-only" if prodcom_only else "pooled"
     print(
-        f"  pooled b = {np.asarray(pooled.params)[1]:.3f} "
-        f"(SE {np.asarray(pooled.bse)[1]:.3f}), R2 = {pooled.rsquared:.3f}, "
-        f"n = {int(pooled.nobs)}"
+        f"  {label} b = {np.asarray(chosen.params)[1]:.3f} "
+        f"(SE {np.asarray(chosen.bse)[1]:.3f}), R2 = {chosen.rsquared:.3f}, "
+        f"n = {int(chosen.nobs)}"
     )
     for name, model in allocator["single"].items():
         print(

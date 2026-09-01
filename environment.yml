@@ -12,6 +12,7 @@ dependencies:
   - statsmodels
   - requests
   - geopandas
+  - cmasher
   - openpyxl
   - xlrd
   - country_converter

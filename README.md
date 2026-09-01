@@ -81,11 +81,12 @@ uv export --format requirements-txt --no-hashes --no-emit-project -o requirement
 ### Scale-up analysis (`data/scale_up/`)
 
 - `parameters.csv` — uncertain parameters (low, high, distribution, units, note, source)
-- `settings.csv` — fixed settings, including the width of the reported uncertainty interval; `linear_models.py` writes its fitted values into this file
+- `settings.csv` — fixed settings, including the width of the reported uncertainty interval, `adjust_MVA_by_cost`, and `linear_fit_PRODCOM_only`; `linear_models.py` writes its fitted values into this file
 - `allocator_fit_data.csv` — the 40 observations behind the MVA exponent
 - `coal_plant_airflow.csv` — coal plant capacity and baghouse airflow sample
 - `BaghouseAirflow.csv` — coal operating MW per country
 - `mva_world_bank.csv` — cached manufacturing value added, downloaded on first run
+- `comtrade_HS842139.xlsx` — UN Comtrade HS 842139 export value and net weight, used when `adjust_MVA_by_cost` is on
 
 ---
 
@@ -108,13 +109,17 @@ uv export --format requirements-txt --no-hashes --no-emit-project -o requirement
 **Visualization** (`scripts/visualization/`)
 
 Every script writes 300 DPI PNGs to `results/visualizations/` and fetches the
-ALLFED style sheet, the Natural Earth country polygons and the ALLFED map border
-from the internet on first run. Maps use the Winkel Tripel projection.
+ALLFED style sheet and Natural Earth country polygons from the internet on first
+run. Maps use the Winkel Tripel projection. Colormaps come from
+[cmasher](https://cmasher.readthedocs.io/) via `get_cmap()` in `viz_common.py`.
+Set `SHOW_MAP_BORDER = True` in that file to draw the ALLFED outline on every
+choropleth. `CMAP_RANGE` in `plot_filtration_coverage.py` keeps only part of
+the named colormap (the default drops the black tip of `arctic_r`).
 
 - `plot_essential_workers.py` — `PctVitalWorkers_Manuscript`, `PctEssentialWorkers_Manuscript` and the four-panel `PctWorkersByCountry_Manuscript_2x2`
 - `plot_workers_vs_gdp.py` — `WorkerShares_vs_GDP_PPP` and `FoodShareOfWorkforce_vs_GDP_PPP`, and the correlation tables behind them
 - `plot_group_composition.py` — `GroupComposition_Global`, the occupational make-up of the workforces
-- `plot_filtration_coverage.py` — `ScenarioCoverage_Manuscript` (all three scenarios with uncertainty intervals), `Global_stacked_cadr` (supply by channel) and `FiltrationCoverageByRegion_Manuscript_Week13`. Coverage is a share of the indoor vital requirement. Pass `--scenario` for the stacked figure and the maps, and `--week` for the mapped week
+- `plot_filtration_coverage.py` — `ScenarioCoverage_Manuscript` (all three scenarios with uncertainty intervals), `Global_stacked_cadr` (supply by channel), `FiltrationCoverageByRegion_Manuscript_Week13` (two-panel essential and vital maps), `FiltrationSupplyAndCoverage_Manuscript_Week13` (regional eCADR supply above, vital coverage below), plus single-panel vital and essential maps. Coverage is a share of the indoor vital requirement. Pass `--scenario` for the stacked figure and the maps, and `--week` for the mapped week
 
 ---
 
@@ -135,8 +140,9 @@ python scripts/visualization/plot_filtration_coverage.py
 
 `linear_models.py` writes `baghouse_gradient`, `baghouse_intercept_l_per_s` and
 `mva_exponent_b` straight into `data/scale_up/settings.csv`, each with the R² and
-sample size it came from, so there is nothing to copy by hand. Its plots go to
-`results/linear_models/`.
+sample size it came from, so there is nothing to copy by hand. Set
+`linear_fit_PRODCOM_only` to `1` to fit `b` on PRODCOM sold production only.
+Its plots go to `results/linear_models/`.
 
 Both model scripts refuse to run on incomplete inputs: `linear_models.py` stops
 while `coal_plant_airflow.csv` is empty, and `scale_up_model.py` stops while any

@@ -24,7 +24,7 @@ from viz_common import (
 
 VMIN = 0.0
 VMAX = 75.0
-CMAP = "viridis"
+CMAP = "lilac"
 LEGEND_LABEL = "% of labour force"
 
 # Manuscript panels: (panel label, column, title)

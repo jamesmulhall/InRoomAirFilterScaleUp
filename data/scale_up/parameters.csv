@@ -12,31 +12,65 @@ fraction_room,0.5,0.68,normal,fraction,Median 0.59 per methods; 90 percent UI ge
 fraction_merv13_plus,0.4,0.6,lognormal,fraction,Methods 2.3.1.,https://www.mordorintelligence.com/industry-reports/portable-air-purifier-market
 fraction_non_panel,0.6,0.7,normal,fraction,Panel filter market (~7 B) is approx. 35% of global market (~20 B),"https://www.researchandmarkets.com/report/global-panel-filters-market
 https://www.marketsandmarkets.com/Market-Reports/panel-filters-market-118890404.html"
-pac_price_usd,100,300,lognormal,USD/unit,*Methods 2.3.1. Placeholder median pending a model run.,
-pac_ecadr_l_per_s,75,125,normal,L/s/unit,*Methods equation 2.,
-cr_box_ecadr_l_per_s,100,160,normal,L/s/unit,*MISSING IN METHODS. Placeholder brackets the 189 L/s measured for 4 x MERV 13 1 inch filters.,https://pmc.ncbi.nlm.nih.gov/articles/PMC9828579
-price_per_volume_1_4,924.32,1138.85,normal,USD/m3 media,From CR_Box_MASTER sheet 'Filter Price Per Merv Rating'.,
-price_per_volume_5_8,686.37,1581.33,normal,USD/m3 media,From CR_Box_MASTER sheet 'Filter Price Per Merv Rating'.,
-price_per_volume_9_12,747.98,1857.04,normal,USD/m3 media,From CR_Box_MASTER sheet 'Filter Price Per Merv Rating'.,
-price_per_volume_13_16,1357.62,2544.88,normal,USD/m3 media,From CR_Box_MASTER sheet 'Filter Price Per Merv Rating'.,
-price_per_volume_17_20,19184.48,26666.1,normal,USD/m3 media,From CR_Box_MASTER sheet 'Filter Price Per Merv Rating'.,
+pac_price_usd,117,439,lognormal,USD/unit,"""An initial cost-survey of commercially available Energy Star rated in-room filters (U.S.EPA 2021a) designed for the residential market found costs ranging from $0.71 to $2.66 per CADR in units of ft3 min?1"". 0.71 to 2.66 * the median CADR below of 165 CFM (=78 L/s) = $117-439",https://www.medrxiv.org/content/10.1101/2022.01.09.22268972v1.full
+pac_ecadr_l_per_s,55,144,lognormal,L/s/unit,Approx. Median and IQR from Energy STAR dataset of 236 models. Median is slightly lower than mean (78 vs 99),https://catalog.data.gov/dataset/energy-star-certified-room-air-cleaners-v3-0
+cr_box_ecadr_l_per_s,110,260,normal,L/s/unit,Estimated from muliple studies and tests of CR boxes,"https://pmc.ncbi.nlm.nih.gov/articles/PMC9828579)~122 L/s)
+https://pmc.ncbi.nlm.nih.gov/articles/PMC9107182/#t0015(~258 L/s)
+https://www.sciencedirect.com/science/article/abs/pii/S0360132324004451?via%3Dihub (~113 L/s real-world use in schools)    
+"
+price_per_volume_1_4,924.32,1138.85,normal,USD/m3 media,From CR_Box_MASTER sheet 'Filter Price Per Merv Rating'.,"https://www.amazon.com/Pamlico-Air-Fiberglass-Filters-SUPPLY/dp/B0B6R45PZ4/ref=sr_1_5?crid=2H4YPVQZK6X3V&dib=eyJ2IjoiMSJ9.rnmzd9tBzNF5tkEprB_0l4mAspzRHs4oHTXnsim6cyzHXGHvx1ajTflUz37bqeSTPZAg1gicLlzb5_uNSXUO7tQpyZRiXkpJpc0iha_MGzGXBIK8kmp_sx26VMKUt604frPvT-dlOfOsOjrdulQMnWhEWRN594YM_iXrdEzq1Sd09xIePPZEcL9j96JD3lia1ykYMjMmVrJNvc-qw3QbqLDYIa07gK2XAuTCV-dC3Ccr4tFZWexulRTyIQaTwKbcAllPJ-iCRPRLfrH2VJERGXr4Z-wPQsq8ugx98sgS0ss.l5gBez7Y_eHUS4RIvZOnHXhqak4L9herumG-PdQ28T0&dib_tag=se&keywords=filter+20x20x1+merv+4&qid=1755491029&sprefix=filter+20x20x1+merv+%2Caps%2C352&sr=8-5
+https://www.amazon.com/Fiberglass-Air-Filter-MERV-4-pack/dp/B0BQZCKZKS/ref=sr_1_7?crid=2H4YPVQZK6X3V&dib=eyJ2IjoiMSJ9.rnmzd9tBzNF5tkEprB_0l4mAspzRHs4oHTXnsim6cyzHXGHvx1ajTflUz37bqeSTPZAg1gicLlzb5_uNSXUO7tQpyZRiXkpJpc0iha_MGzGXBIK8kmp_sx26VMKUt604frPvT-dlOfOsOjrdulQMnWhEWRN594YM_iXrdEzq1Sd09xIePPZEcL9j96JD3lia1ykYMjMmVrJNvc-qw3QbqLDYIa07gK2XAuTCV-dC3Ccr4tFZWexulRTyIQaTwKbcAllPJ-iCRPRLfrH2VJERGXr4Z-wPQsq8ugx98sgS0ss.l5gBez7Y_eHUS4RIvZOnHXhqak4L9herumG-PdQ28T0&dib_tag=se&keywords=filter+20x20x1+merv+4&qid=1755491106&sprefix=filter+20x20x1+merv+%2Caps%2C352&sr=8-7
+https://www.mscdirect.com/product/details/37939105"
+price_per_volume_5_8,686.37,1581.33,normal,USD/m3 media,From CR_Box_MASTER sheet 'Filter Price Per Merv Rating'.,"https://www.raptorsupplies.com.au/c/hvac-and-refrigeration/c3/pleated-air-filters?cat=27059&catKey=726362
+https://www.honeywellstore.com/store/products/honeywell-20x20x1-standard-efficiency-merv-8-air-filter-12-pack.htm
+https://www.smartbuysuper.com/aerostar-20x20x1-merv-6-pleated-air-filter-ac-furnace-air-filter-6-pack-actual-size-19-34-x-19-34-x-34-p-99810.htm
+https://www.factorydirectfilters.com/products/20x20x1-air-filter?variant=44484966547702"
+price_per_volume_9_12,747.98,1857.04,normal,USD/m3 media,From CR_Box_MASTER sheet 'Filter Price Per Merv Rating'.,"https://www.raptorsupplies.com.au/c/hvac-and-refrigeration/c3/pleated-air-filters?cat=27059&catKey=726362
+https://www.honeywellstore.com/store/products/honeywell-20x20x1-high-efficiency-merv-11-air-filter-4-pack.htm
+https://www.factorydirectfilters.com/products/20x20x1-air-filter?variant=44484966547702
+https://www.smartbuysuper.com/glasfloss-20x20x1-merv-10-fpr-56-pleated-air-filters-box-of-6-actual-size-1912-x-1912-x-78-p-243179.htm"
+price_per_volume_13_16,1357.62,2544.88,normal,USD/m3 media,From CR_Box_MASTER sheet 'Filter Price Per Merv Rating'.,"https://www.raptorsupplies.com.au/c/hvac-and-refrigeration/c3/pleated-air-filters?cat=27059&catKey=726362
+https://www.honeywellstore.com/store/products/honeywell-20x20x1-ultra-efficiency-merv-13-air-filter-4-pack.htm
+https://www.factorydirectfilters.com/products/20x20x1-air-filter?variant=44484966547702
+https://www.smartbuysuper.com/index.php?main_page=product_info&products_id=439911
+https://www.nordicpure.com/product/20x20x1-air-filter-2/?srsltid=AfmBOoqNuJo3yqIPf5dxznIRyCkcvYKq-Vgmxp-sGFePbKxZfD2nXpqL"
+price_per_volume_17_20,19184.48,26666.1,normal,USD/m3 media,From CR_Box_MASTER sheet 'Filter Price Per Merv Rating'.,"https://www.raptorsupplies.com.au/c/hvac-and-refrigeration/p/grainger-air-cleaner-filters-and-uv-bulbs
+https://www.raptorsupplies.com.au/pd/dri-eaz/125028
+https://www.raptorsupplies.com.au/pd/field-controls/tplus-h13
+https://protecta.com.au/hepa-filter-has500-hf.html"
 fraction_panel,0.3,0.4,normal,fraction,Panel filter market (~7 B) is approx. 35% of global market (~20 B),"https://www.researchandmarkets.com/report/global-panel-filters-market
 https://www.marketsandmarkets.com/Market-Reports/panel-filters-market-118890404.html"
 filter_volume_m3,0.006555,0.006555,uniform,m3/filter,Volume of a 20x20x1 filter (0.508 x 0.508 x 0.0254 m). Equation 4 divides revenue by price per m3 of media times this volume.,
 filter_media_area_m2,0.47,0.47,uniform,m2/filter,"Media area per pleated filter, used only for the meltblown mass cap. Manufacturer datasheets cluster at 0.51 m2 (5.5 sq ft).",https://www.purolatorairfilters.com/pdfs/PuroGreen-13.pdf
 baghouse_efficiency,0.5,0.8,normal,fraction,"Methods 2.3.3, minimum efficiency as a function of particle size.",https://www.mdpi.com/1660-4601/16/2/247
-baghouse_utilisation,0.1,0.3,normal,fraction,*MISSING IN METHODS. Share of coal units fitted with baghouses rather than electrostatic precipitators.,
-fraction_recovered,0.5,0.8,normal,fraction,"*MISSING IN METHODS. Share of in-service units recovered, methods equations 9 and 10.",
+baghouse_utilisation,0.1,0.35,normal,fraction,Share of coal units fitted with baghouses rather than electrostatic precipitators.,"https://www.mee.gov.cn/gkml/hbb/bgth/201706/W020170623582998746402.pdf pg 12-13 translated
+https://www.nescaum.org/documents/coal-control-technology-nescaum-report-20110330.pdf
+https://usea.org/sites/default/files/032013_Recent%20developments%20in%20particulate%20control_ccc218.pdf pg 7"
+fraction_recovered,0.5,0.8,normal,fraction,"Share of in-service units recovered, methods equations 9 and 10.",Estimate
 pac_lifespan_years,2,5,lognormal,years,"Methods, 3 years with a 2 to 5 year range.",
 panel_filter_lifespan_years,0.5,1,normal,years,"Methods, 9 months with a 6 to 12 month range.",
 scenario3_multiplier,2,6,normal,multiple,"Methods 2.3.4, 4x with a 90 percent CI of 2 to 6x.",https://link.springer.com/content/pdf/10.1057/s42214-020-00062-w.pdf
 meltblown_total_tonnes,215475,291525,normal,tonnes/year,"Global meltblown consumption, 2023. plus/minus 15%",https://www.smithers.com/resources/2023/march/post-covid-market-correction-for-meltblown
 meltblown_share_available,0.12,0.12,normal,fraction,"Methods 2.3.4, half of the 24 percentage point shift PPE took during COVID-19.",https://www.smithers.com/resources/2023/march/post-covid-market-correction-for-meltblown
-meltblown_basis_weight_gsm,20,80,normal,g/m2,"Air-filter-grade meltblown. A market-average basis weight would be roughly 127 g/m2, inflated by liquid filtration media, and would make the cap far too tight.",https://patents.google.com/patent/US20080017038A1/en
+meltblown_basis_weight_gsm,20,90,lognormal,g/m2,"Air-filter-grade meltblown. A market-average basis weight would be roughly 127 g/m2, inflated by liquid filtration media, and would make the cap far too tight.","https://usea.org/sites/default/files/032013_Recent%20developments%20in%20particulate%20control_ccc218.pdf 72 for MERV13 with 22 isolated meltblown layer
+https://www.meltblown.com.cn/featured/excellent-quality-meltblown-filter-material-air-filtration-non-woven-materials-medlong-5-product/ 15-40 for ~MERV13 to HEPA
+https://www.compofilter.com/air-filter-media/hepa-filter-material/ 75-100
+https://patents.google.com/patent/US20080017038A1/en"
 meltblown_layers_per_filter,1,2,normal,layers,Methods 2.3.4. Based on finding panel filters with one or two layers.,https://precambrian.ca/product-hvac.html
 baghouse_bag_life_years,1,3,normal,years,Service life of a baghouse filter bag. Annual replacement-bag production is the installed stock divided by this.,https://www.baghouseamerica.com/blog/how-long-do-filter-bags-last/
 idle_coal_capacity_share,0.2,0.3,normal,fraction,"Share of coal capacity left idle by the fall in electricity demand, which bounds how many bags can be recovered without cutting generation. IEA: every month of full COVID-19 lockdown cut demand by 20 percent on average; Italy over 25 percent, France, India, Spain and the UK at least 15 percent.",https://www.iea.org/reports/global-energy-review-2020/electricity
-pc_fan_market_revenue_usd,5062500000,8437500000,normal,USD/year,"*MISSING IN METHODS. Global PC case fan market revenue, methods equation 5.",
-pc_fan_price_usd,5,15,normal,USD/fan,*MISSING IN METHODS. Average price per PC case fan.,
-box_fan_market_revenue_usd,378657080.97,7148009585.7,normal,USD/year,"*MISSING IN METHODS. Global box fan market revenue, methods equation 5.",
-box_fan_price_usd,20,44,normal,USD/fan,*MISSING IN METHODS. Average price per box fan.,
+pc_fan_market_revenue_usd,2205000000,3675000000,normal,USD/year,"Global PC case fan market revenue, methods equation 5.","Average of first two sources, third excluded as a high outlier (does not change results)
+https://www.businessresearchinsights.com/market-reports/computer-fan-market-115308
+https://www.verifiedmarketreports.com/product/computer-fans-market/
+https://www.verifiedmarketresearch.com/product/pc-case-fans-market/"
+pc_fan_price_usd,7.5,15,normal,USD/fan,Average price per PC case fan.,"https://www.newegg.com/Case-Fans/SubCategory/ID-573?source=region
+https://www.pccasegear.com/category/9_510/fans-accessories/fans-by-size-120mm"
+box_fan_market_revenue_usd,113597124.29,2144402875.71,normal,USD/year,"Global box fan market revenue, methods equation 5. Estimated as 30% of axial fan market","https://www.zionmarketresearch.com/report/axial-fans-market
+https://dataintelo.com/report/axial-fan-market
+https://www.verifiedmarketreports.com/product/axial-fans-market-size-and-forecast/"
+box_fan_price_usd,20,44,normal,USD/fan,Average price per box fan.,"https://www.amazon.com/Lasko-3723-Premium-Box-Fan/dp/B000HHJ2I2
+https://www.walmart.com/ip/Lasko-Products-3723-Premium-Box-Fan/16503180
+https://north40.com/lasko-3723-premium-3-speed-box-fan-20
+https://www.homedepot.com/p/Lasko-Premium-20-in-3-Speed-Box-Fan-LKO-3723/317261256
+https://www.target.com/p/impress-20-inch-3-speed-box-fan-white/-/A-91830729
+"
