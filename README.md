@@ -1,38 +1,39 @@
-# In Room Air Filter Scale Up GitHub Repository
+# Modelling of In-room Filtration Supply and Essential Worker Requirements in Future Pandemics
 
-A scale up simulation of various in room filtration systems that could protect essential workers in the event of a catastrophic pandemic.
+A scale up simulation of various in-room filtration systems that could protect essential workers in the event of a catastrophic pandemic.  
 
----
+This repo contains two main models that may be useful for other researchers:
 
-## Overview
-
-This repository holds the data processing and analysis for in-room filtration scale-up simulations and essential-worker estimation under an extreme pandemic scenario.
-
-Landing Page: https://sites.google.com/view/anu-capstone-air-filtration/home
-
-Repository: https://drive.google.com/drive/folders/1PC_QixM3_B3nh0tNhnJJnPxHECVEsJI7
+1. src/essential_workers.py estimates essential worker counts, vital worker counts, indoor essential worker counts, and indoor vital worker counts for all 196 UN member states and 21 additional territories. It also provides a sector breakdown for many of these countries so users can see indoor essential workers (or equivalent) in the food sector, healthcare sector, energy sector, etc. This may be useful for analysis on potential PPE stockpiles or scaling up other transmission reducing interventions.
+2. src/scale_up_model.py models the scale-up of commercial portable air cleaners, DIY Corsi-Rosenthal boxes, and DIY coal baghouse filtration units during the first 6 months of a pandemic as transmissible as measles. This is provided globally and by UN region. We also provide country-level estimates, but recommend that these are not used unless the numbers are verified with national data.
 
 ---
+
+
 
 ## Project structure
 
-| Path | Purpose |
-| --- | --- |
-| `data/essential_workers/` | ILO, O*NET, poll, crosswalk, labour force, JEM (optional) |
-| `data/scale_up/` | Parameters, settings, coal baghouse airflow, cached World Bank MVA |
-| `results/essential_workers/` | Essential/vital worker CSV outputs |
-| `results/scale_up/PACs_prioritized/` | Weekly eCADR and workforce coverage for each scenario (default: panel filters stay with PACs) |
-| `results/scale_up/CR_boxes_prioritized/` | Same outputs when PAC panel filters are diverted to CR boxes |
-| `results/visualizations/` | ALLFED-styled manuscript figures (300 DPI PNG) |
-| `src/preprocessing.py` | Load and transform raw essential-worker inputs |
-| `src/essential_workers.py` | Overlap calibration, labour-force pipeline, validation |
-| `src/scale_up_model.py` | Methods 2.3 scale-up: PACs, CR boxes, coal baghouse filters |
-| `src/linear_models.py` | Fits the coal-airflow and MVA-exponent regressions the model uses |
-| `src/mc_distributions.py` | Monte Carlo samplers for the uncertain parameters |
-| `scripts/` | Processing notebooks (`essential_workers_processing`, `scale_up_processing`) |
-| `scripts/visualization/` | ALLFED matplotlib figure scripts |
+
+| Path                                     | Purpose                                                                                                                           |
+| ---------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------- |
+| `data/essential_workers/`                | ILO, O*NET, poll, crosswalk, labour force, JEM (optional)                                                                         |
+| `data/scale_up/`                         | Parameters, settings, coal baghouse airflow, cached World Bank MVA                                                                |
+| `results/essential_workers/`             | Essential/vital worker CSV outputs                                                                                                |
+| `results/scale_up/PACs_prioritized/`     | Weekly eCADR and workforce coverage for each scenario (default: panel filters stay with PACs)                                     |
+| `results/scale_up/CR_boxes_prioritized/` | Same outputs when PAC panel filters are diverted to CR boxes                                                                      |
+| `results/visualizations/`                | ALLFED-styled manuscript figures (300 DPI PNG)                                                                                    |
+| `src/preprocessing.py`                   | Load and transform raw essential-worker inputs                                                                                    |
+| `src/essential_workers.py`               | Overlap calibration, labour-force pipeline, validation                                                                            |
+| `src/scale_up_model.py`                  | Methods 2.3 scale-up: PACs, CR boxes, coal baghouse filters                                                                       |
+| `src/linear_models.py`                   | Fits the coal-airflow and MVA-exponent regressions the model uses                                                                 |
+| `src/mc_distributions.py`                | Monte Carlo samplers for the uncertain parameters                                                                                 |
+| `scripts/`                               | Processing notebooks that walk the user through each step of the analyses (`essential_workers_processing`, `scale_up_processing`) |
+| `scripts/visualization/`                 | ALLFED matplotlib figure scripts                                                                                                  |
+
 
 ---
+
+
 
 ## Installation
 
@@ -64,7 +65,11 @@ uv export --format requirements-txt --no-hashes --no-emit-project -o requirement
 
 ---
 
+
+
 ## Data
+
+
 
 ### Essential worker analysis (`data/essential_workers/`)
 
@@ -79,6 +84,8 @@ uv export --format requirements-txt --no-hashes --no-emit-project -o requirement
 - `ASHRAE241_ECA_by_occupancy.csv` — ASHRAE 241 Table 5-1 ECA rates (from Jones et al. 2025 Table 4)
 - `ASHRAE241_group_mapping.csv` — maps occupational groups to ASHRAE occupancy categories
 
+
+
 ### Scale-up analysis (`data/scale_up/`)
 
 - `parameters.csv` — uncertain parameters (low, high, distribution, units, note, source)
@@ -91,14 +98,18 @@ uv export --format requirements-txt --no-hashes --no-emit-project -o requirement
 
 ---
 
+
+
 ## Results
 
-- **`results/essential_workers/`** — per-country/regional worker counts, per-group worker counts and ASHRAE-241 CADR requirements (ECA × 5.7), validation, overlap calibration, on-site housing requirements
-- **`results/scale_up/PACs_prioritized/`** — for each scenario: `weekly_ecadr_by_country_*`, `ecadr_by_channel_*` (weekly, global) and `coverage_{vital,essential}_*` (median and uncertainty interval by region and week), plus `requirements_by_region.csv`, the eCADR each region is measured against. This is the default run (panel filters stay with PACs). **`results/scale_up/CR_boxes_prioritized/`** holds the same outputs when panel filters are diverted to CR boxes
-- **`results/linear_models/`** — plots of the two fitted regressions
-- **`results/visualizations/`** — ALLFED-styled manuscript figures
+- `results/essential_workers/` — per-country/regional worker counts, per-group worker counts and ASHRAE-241 CADR requirements (ECA × 5.7), validation, overlap calibration, on-site housing requirements
+- `results/scale_up/PACs_prioritized/` — for each scenario: `weekly_ecadr_by_country_*`, `ecadr_by_channel_*` (weekly, global) and `coverage_{vital,essential}_*` (median and uncertainty interval by region and week), plus `requirements_by_region.csv`, the eCADR each region is measured against. This is the default run (panel filters stay with PACs). `results/scale_up/CR_boxes_prioritized/` holds the same outputs when panel filters are diverted to CR boxes
+- `results/linear_models/` — plots of the two fitted regressions
+- `results/visualizations/` — ALLFED-styled manuscript figures
 
 ---
+
+
 
 ## Scripts
 
@@ -123,6 +134,8 @@ the named colormap (the default drops the black tip of `arctic_r`).
 - `plot_filtration_coverage.py` — `ScenarioCoverage_Manuscript` (all three scenarios with uncertainty intervals), `Global_stacked_cadr` (supply by channel, PACs prioritized), `Global_stacked_cadr_CR_boxes_prioritized` (same figure when panel filters are diverted to CR boxes), `FiltrationCoverageByRegion_Manuscript_Week13` (two-panel essential and vital maps), `FiltrationSupplyAndCoverage_Manuscript_Week13` (regional eCADR supply above, vital coverage below), plus single-panel vital and essential maps. Coverage is a share of the indoor vital requirement. Pass `--scenario` for the stacked figure and the maps, and `--week` for the mapped week
 
 ---
+
+
 
 ## Running pipelines from the command line
 
@@ -158,3 +171,4 @@ lower number means the download failed and a stale cache was used.
 pytest                    # fast, uses tests/fixtures/
 pytest --full-data        # includes ILO sense-checks on real data
 ```
+

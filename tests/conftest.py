@@ -75,4 +75,10 @@ def ew_outputs(data_dir, ew_results_dir):
     """Run the essential-worker pipeline once and share the result."""
     from essential_workers import run_pipeline
 
-    return run_pipeline(data_dir=data_dir, results_dir=ew_results_dir, write=True)
+    # Fixtures have O*NET CSVs but no JEM file; keep tests off production settings.
+    return run_pipeline(
+        data_dir=data_dir,
+        results_dir=ew_results_dir,
+        write=True,
+        indoor_context_method="onet_max",
+    )

@@ -289,6 +289,7 @@ def update_settings(coal, allocator, path=SETTINGS_FILE):
     ]
 
     settings = pd.read_csv(path).set_index("setting")
+    settings["value"] = settings["value"].astype(object)
     for row in rows:
         columns = [key for key in row if key != "setting"]
         settings.loc[row["setting"], columns] = [row[key] for key in columns]
