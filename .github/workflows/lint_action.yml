@@ -1,8 +1,6 @@
 name: Lint
 
 on:
-  # Trigger the workflow on push or pull request,
-  # but only for the main branch
   push:
     branches:
       - main
@@ -17,10 +15,10 @@ jobs:
 
     steps:
       - name: Check out Git repository
-        uses: actions/checkout@v2
+        uses: actions/checkout@v4
 
       - name: Set up Python
-        uses: actions/setup-python@v1
+        uses: actions/setup-python@v5
         with:
           python-version: "3.11"
 
@@ -30,9 +28,9 @@ jobs:
       - name: Run linters
         uses: wearerequired/lint-action@v2
         with:
-          auto_fix: true
+          auto_fix: false
           black: true
-          black_auto_fix: true
+          black_auto_fix: false
           flake8: true
           flake8_auto_fix: false
           flake8_args: "--extend-ignore=E203 --max-line-length=88"

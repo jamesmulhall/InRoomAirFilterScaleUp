@@ -189,9 +189,7 @@ def _draw_scenario_coverage_ax(
         essential_level,
         color="dimgray",
         alpha=0.15,
-        label=(
-            "Requirements range (indoor vital to indoor essential)"
-        ),
+        label=("Requirements range (indoor vital to indoor essential)"),
     )
 
     ax.set_xlim(1, last_week)
@@ -525,7 +523,7 @@ def plot_supply_and_coverage_maps(output_path: Path, scenario: int, week: int) -
     label_panel(ax_supply, "a")
     ax_supply.set_title(
         # f"Filtration supply by UN region (week {week})",
-        f"Filtration supply by UN region after 3 months",
+        "Filtration supply by UN region after 3 months",
         fontsize=12,
         fontweight="bold",
         pad=6,
@@ -545,7 +543,7 @@ def plot_supply_and_coverage_maps(output_path: Path, scenario: int, week: int) -
     label_panel(ax_coverage, "b")
     ax_coverage.set_title(
         # f"Indoor vital workers covered by filtration (week {week})",
-        f"Indoor vital workers covered by filtration after 3 months",
+        "Indoor vital workers covered by filtration after 3 months",
         fontsize=12,
         fontweight="bold",
         pad=6,
@@ -572,7 +570,9 @@ def main(output_dir: Path, scenario: int, week: int) -> None:
     print(f"Wrote {scenario_two_panel_path}")
 
     stacked_path = output_dir / "Global_stacked_cadr.png"
-    plot_stacked_channels(stacked_path, scenario, swap_repurposed_cr_baghouse_colors=True)
+    plot_stacked_channels(
+        stacked_path, scenario, swap_repurposed_cr_baghouse_colors=True
+    )
     print(f"Wrote {stacked_path}")
 
     cr_path = output_dir / "Global_stacked_cadr_CR_boxes_prioritized.png"

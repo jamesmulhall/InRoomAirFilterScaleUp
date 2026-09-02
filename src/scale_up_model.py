@@ -378,9 +378,7 @@ def pac_panel_cr_box_filters(samples):
     Returns:
         numpy.ndarray: Equivalent 20x20x1 filters per year, shape (n,).
     """
-    volume_ratio = (
-        samples["pac_panel_filter_volume_m3"] / samples["filter_volume_m3"]
-    )
+    volume_ratio = samples["pac_panel_filter_volume_m3"] / samples["filter_volume_m3"]
     return pac_panel_filter_units(samples) * volume_ratio
 
 
@@ -735,7 +733,9 @@ def coverage(cumulative, requirement, df, interval):
     return pd.concat(frames, ignore_index=True)
 
 
-def build_streams(df, samples, settings, n, scenario, shares, prioritize_cr_boxes=False):
+def build_streams(
+    df, samples, settings, n, scenario, shares, prioritize_cr_boxes=False
+):
     """
     Cumulative weekly eCADR for every supply channel under one scenario.
 

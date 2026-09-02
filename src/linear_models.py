@@ -25,7 +25,8 @@ import statsmodels.api as sm
 
 # Set up ALLFED plotting style
 plt.style.use(
-    "https://raw.githubusercontent.com/allfed/ALLFED-matplotlib-style-sheet/main/ALLFED.mplstyle"
+    "https://raw.githubusercontent.com/allfed/"
+    "ALLFED-matplotlib-style-sheet/main/ALLFED.mplstyle"
 )
 
 COAL_FILE = "data/scale_up/coal_plant_airflow.csv"

@@ -217,6 +217,9 @@ def _ilo_row(country, classif, obs, year, sex="Total"):
     }
 
 
+_ILO_L2 = "Occupation (ISCO-08), 2 digit level:"
+
+
 def test_build_employment_picks_latest_non_nan_year():
     """Country-year snapshot uses latest year when NEC rule does not apply (no Tot)."""
     df = pd.DataFrame(
@@ -328,14 +331,15 @@ def test_build_employment_year_fallback_all_high_nec():
 
 def test_build_employment_imputes_missing_armed_forces_security_and_laos_cleaning():
     """Missing AF and security are imputed globally; cleaning only for Laos."""
-    tot = "Occupation (ISCO-08), 2 digit level: Total"
-    c01 = "Occupation (ISCO-08), 2 digit level: 01 - Commissioned armed forces officers"
-    c02 = "Occupation (ISCO-08), 2 digit level: 02 - Non-commissioned armed forces officers"
-    c03 = "Occupation (ISCO-08), 2 digit level: 03 - Armed forces occupations, other ranks"
-    c54 = "Occupation (ISCO-08), 2 digit level: 54 - Protective services workers"
-    c91 = "Occupation (ISCO-08), 2 digit level: 91 - Cleaners and helpers"
-    c96 = "Occupation (ISCO-08), 2 digit level: 96 - Refuse workers and other elementary workers"
-    health = "Occupation (ISCO-08), 2 digit level: 22 - Health professionals"
+    tot = f"{_ILO_L2} Total"
+    c01 = f"{_ILO_L2} 01 - Commissioned armed forces officers"
+    c02 = f"{_ILO_L2} 02 - Non-commissioned armed forces officers"
+    c03 = f"{_ILO_L2} 03 - Armed forces occupations, other ranks"
+    c54 = f"{_ILO_L2} 54 - Protective services workers"
+    c91 = f"{_ILO_L2} 91 - Cleaners and helpers"
+    refuse = "Refuse workers and other elementary workers"
+    c96 = f"{_ILO_L2} 96 - {refuse}"
+    health = f"{_ILO_L2} 22 - Health professionals"
     df = pd.DataFrame(
         [
             _ilo_row("Argentina", tot, 1000.0, 2024),
@@ -386,7 +390,7 @@ def test_build_employment_us_armed_forces_uses_dod_override():
 
 
 def test_compute_worker_dicts_nec_imputation():
-    """NEC employment is counted at the coded occupations' average essential/vital weights."""
+    """NEC employment uses coded occupations' average essential/vital weights."""
     weights = ew.build_isco_lvl2_weights(
         pd.read_excel(
             Path(__file__).resolve().parents[1]
