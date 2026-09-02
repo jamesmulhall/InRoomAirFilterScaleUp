@@ -12,10 +12,10 @@ repurposing_release_weeks,12.0,weeks,Weeks over which repurposed units are recov
 baghouse_release_weeks,4.0,weeks,"Weeks over which bags recovered from idle coal plants are stripped, adapted and deployed.",
 baghouse_gradient,1655.17,L/s per MW,"Fitted in linear_models.py. R2 = 0.92, n = 10.",data/scale_up/coal_plant_airflow.csv
 baghouse_intercept_l_per_s,39019.8,L/s,"Fitted in linear_models.py. Per-plant intercept, so it is only applied to countries with non-zero coal capacity.",data/scale_up/coal_plant_airflow.csv
-mva_exponent_b,1.019,exponent,"Fitted in linear_models.py. Standard error 0.110, R2 = 0.892, n = 40.",data/scale_up/allocator_fit_data.csv
-linear_fit_PRODCOM_only,0,flag,"If 1, linear_models.py fits b on PRODCOM sold production only and skips the pooled GrandView+PRODCOM regression.",data/scale_up/allocator_fit_data.csv
+mva_exponent_b,1.163,exponent,"Fitted in linear_models.py on PRODCOM only. Standard error 0.179, R2 = 0.689, n = 21.",data/scale_up/allocator_fit_data.csv
+linear_fit_PRODCOM_only,1.0,flag,"If 1, linear_models.py fits b on PRODCOM sold production only and skips the pooled GrandView+PRODCOM regression.",data/scale_up/allocator_fit_data.csv
 min_country_filter_production,200000.0,units/year,"Methods 2.3.1 minimum national threshold, tested against each country's share of total panel filter production across all MERV bands.",https://scoris.eu/company/EE/14610854/filter-plus-ou/
-adjust_MVA_by_cost,0,flag,"If 1, divide MVA by HS 842139 export USD/kg so cheaper producers get a larger share of global production. Missing prices use neighbour averages then the global median.",data/scale_up/comtrade_HS842139.xlsx
+adjust_MVA_by_cost,0.0,flag,"If 1, divide MVA by HS 842139 export USD/kg so cheaper producers get a larger share of global production. Missing prices use neighbour averages then the global median.",data/scale_up/comtrade_HS842139.xlsx
 filters_per_cr_box,4.0,filters,Methods equation 5.,
 pc_fans_per_cr_box,6.0,fans,Methods equation 5.,
 scenario3_ramp_weeks,8.0,weeks,Methods 2.3.4.,

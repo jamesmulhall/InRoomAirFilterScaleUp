@@ -440,8 +440,58 @@ def test_pac_ecadr_global_multiplies_the_eligible_share_by_unit_ecadr():
         "pac_price_usd": np.array([25.0]),
         "pac_ecadr_l_per_s": np.array([100.0]),
     }
-    # 1000 * 0.5 * 0.5 * 0.5 / 25 = 5 units, at 100 L/s each
-    np.testing.assert_allclose(sm.pac_ecadr_global(samples), [500.0])
+    # 1000 * 0.5 * 0.5 * 0.5 / 25 = 5 non-panel units, at 100 L/s each
+    np.testing.assert_allclose(
+        sm.pac_ecadr_global(samples, prioritize_cr_boxes=True), [500.0]
+    )
+
+
+def test_pac_ecadr_global_counts_panel_units_when_pacs_are_prioritized():
+    """When PACs keep panel filters, both shares count toward PAC eCADR."""
+    samples = {
+        "pac_market_revenue_usd": np.array([1000.0]),
+        "fraction_room": np.array([0.5]),
+        "fraction_merv13_plus": np.array([0.5]),
+        "fraction_non_panel": np.array([0.5]),
+        "pac_price_usd": np.array([25.0]),
+        "pac_ecadr_l_per_s": np.array([100.0]),
+    }
+    np.testing.assert_allclose(
+        sm.pac_ecadr_global(samples, prioritize_cr_boxes=False), [1000.0]
+    )
+
+
+def test_cr_box_ecadr_subtracts_panel_pac_units_when_pacs_are_prioritized():
+    """Panel PAC units leave the CR box filter pool to avoid double counting."""
+    settings = {"filters_per_cr_box": 4.0, "pc_fans_per_cr_box": 6.0}
+    samples = _band_samples(
+        pc_fan_market_revenue_usd=np.array([1e12]),
+        pc_fan_price_usd=np.array([1.0]),
+        box_fan_market_revenue_usd=np.array([1e12]),
+        box_fan_price_usd=np.array([1.0]),
+        cr_box_ecadr_l_per_s=np.array([100.0]),
+    )
+    revenue = np.array([1000.0])
+    _, filters_default, _ = sm.cr_box_ecadr_global(samples, settings, revenue)
+    _, filters_adjusted, _ = sm.cr_box_ecadr_global(
+        samples, settings, revenue, panel_pac_deduction=np.array([5.0])
+    )
+    np.testing.assert_allclose(filters_adjusted, filters_default - 5.0)
+
+
+def test_pac_panel_cr_box_filters_scales_by_filter_volume():
+    """Panel PAC units convert to 20x20x1 counts via the volume ratio."""
+    samples = {
+        "pac_market_revenue_usd": np.array([1000.0]),
+        "fraction_room": np.array([1.0]),
+        "fraction_merv13_plus": np.array([1.0]),
+        "fraction_non_panel": np.array([0.5]),
+        "pac_price_usd": np.array([100.0]),
+        "pac_panel_filter_volume_m3": np.array([0.002]),
+        "filter_volume_m3": np.array([0.01]),
+    }
+    # 1000 * 1 * 1 * 0.5 / 100 = 5 panel PAC units; 0.2 volume ratio -> 1 filter
+    np.testing.assert_allclose(sm.pac_panel_cr_box_filters(samples), [1.0])
 
 
 def _band_samples(**overrides):
@@ -632,7 +682,7 @@ def test_write_requirements_totals_each_region_and_the_world(tmp_path, monkeypat
             "Indoor Essential CADR Requirement (L/s)": [10.0, 20.0, 40.0],
         }
     )
-    sm.write_requirements(df)
+    sm.write_requirements(df, results_dir=str(tmp_path))
 
     totals = pd.read_csv(tmp_path / "requirements_by_region.csv", index_col="region")
     assert totals.loc["North", "indoor_vital_ecadr_l_per_s"] == 3.0

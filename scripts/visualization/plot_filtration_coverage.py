@@ -19,11 +19,13 @@ import argparse
 from pathlib import Path
 
 import matplotlib.pyplot as plt
+from matplotlib.patches import Rectangle
 import pandas as pd
 
 from viz_common import (
     ESSENTIAL_WORKERS_RESULTS,
-    SCALE_UP_RESULTS,
+    CR_BOXES_PRIORITIZED_RESULTS,
+    PACS_PRIORITIZED_RESULTS,
     SAVE_DPI,
     VISUALIZATIONS_RESULTS,
     add_horizontal_colorbar,
@@ -43,6 +45,9 @@ REGION_COVERAGE_ALPHA = 0.8
 # Extra vertical gap between stacked map panels, as a fraction of panel height.
 # Constrained layout's default is 0.02; raise this to pull the panels apart.
 PANEL_HSPACE = 0.10
+LEGEND_FRAMEON = False
+# Panel-letter position for ScenarioCoverage_Manuscript_two_panel (axes coordinates).
+SCENARIO_COVERAGE_PANEL_LABEL_XY = (-0.08, 1.129)
 
 # Supply channels, in stacking order, with manuscript labels
 CHANNEL_LABELS = {
@@ -72,7 +77,7 @@ def load_coverage(label: str, scenario: int) -> pd.DataFrame:
     Returns:
         pandas.DataFrame: Coverage by region and week, as percentages.
     """
-    path = SCALE_UP_RESULTS / f"coverage_{label}_scenario{scenario}.csv"
+    path = PACS_PRIORITIZED_RESULTS / f"coverage_{label}_scenario{scenario}.csv"
     df = pd.read_csv(path)
     for column in ["coverage_median", "coverage_lower", "coverage_upper"]:
         df[column] *= 100.0
@@ -91,7 +96,7 @@ def load_regional_ecadr(scenario: int, week: int) -> pd.DataFrame:
         pandas.DataFrame: Columns region and ecadr_l_per_s.
     """
     weekly = pd.read_csv(
-        SCALE_UP_RESULTS / f"weekly_ecadr_by_country_scenario{scenario}.csv",
+        PACS_PRIORITIZED_RESULTS / f"weekly_ecadr_by_country_scenario{scenario}.csv",
         index_col=0,
     ).reset_index(names="Country Name")
     regions = pd.read_csv(ESSENTIAL_WORKERS_RESULTS / "EssentialWorkersByCountry.csv")[
@@ -116,7 +121,7 @@ def load_requirements() -> pd.DataFrame:
         pandas.DataFrame: Indexed by region, in L/s.
     """
     return pd.read_csv(
-        SCALE_UP_RESULTS / "requirements_by_region.csv", index_col="region"
+        PACS_PRIORITIZED_RESULTS / "requirements_by_region.csv", index_col="region"
     )
 
 
@@ -142,6 +147,81 @@ def _save_figure(fig: plt.Figure, output_path: Path) -> None:
     plt.close(fig)
 
 
+def _draw_scenario_coverage_ax(
+    ax,
+    by_scenario,
+    essential_level,
+    last_week,
+    title=None,
+    ylim=None,
+    show_legend=True,
+    show_xlabel=True,
+):
+    """
+    Draw global scenario coverage on one axes.
+
+    Arguments:
+        ax (matplotlib.axes.Axes): Axes to draw on.
+        by_scenario (dict): Global vital coverage by scenario.
+        essential_level (float): Essential requirement as % of vital.
+        last_week (int): Last week on the x-axis.
+        title (str or None): Axes title.
+        ylim (tuple or None): y-axis limits, or None for autoscale.
+        show_legend (bool): Whether to draw the legend.
+        show_xlabel (bool): Whether to draw the x-axis label.
+    """
+    for (scenario, label), style in zip(SCENARIO_LABELS.items(), ["-", "-", "-"]):
+        df = by_scenario[scenario]
+        (line,) = ax.plot(
+            df.week, df.coverage_median, linewidth=2, linestyle=style, label=label
+        )
+        ax.fill_between(
+            df.week,
+            df.coverage_lower,
+            df.coverage_upper,
+            color=line.get_color(),
+            alpha=0.2,
+            linewidth=0,
+        )
+
+    ax.axhspan(
+        100.0,
+        essential_level,
+        color="dimgray",
+        alpha=0.15,
+        label=(
+            "Requirements range (indoor vital to indoor essential)"
+        ),
+    )
+
+    ax.set_xlim(1, last_week)
+    if ylim is not None:
+        ax.set_ylim(*ylim)
+    if show_xlabel:
+        ax.set_xlabel("Weeks since the start of the pandemic")
+    ax.set_ylabel("% of indoor vital worker requirement")
+    ax.grid(True, linestyle="--", alpha=0.4)
+    right = ax.secondary_yaxis(
+        "right",
+        functions=(
+            lambda y: y * 100.0 / essential_level,
+            lambda y: y * essential_level / 100.0,
+        ),
+    )
+    right.set_ylabel("% of indoor essential worker requirement")
+    if title:
+        ax.set_title(title, fontweight="bold")
+    if show_legend:
+        ax.legend(
+            fontsize=9,
+            loc="upper center",
+            bbox_to_anchor=(0.5, -0.12),
+            ncol=2,
+            frameon=LEGEND_FRAMEON,
+            framealpha=0.9,
+        )
+
+
 def plot_scenario_coverage(output_path: Path) -> None:
     """
     Global coverage over time under all three scenarios.
@@ -163,76 +243,130 @@ def plot_scenario_coverage(output_path: Path) -> None:
     last_week = by_scenario[1].week.max()
 
     fig, ax = plt.subplots(figsize=(10, 6))
-    # Scenario 3 is dashed so it stays visible where the meltblown cap does not
-    # bind and scenario 2 lies on top of it
-    for (scenario, label), style in zip(SCENARIO_LABELS.items(), ["-", "-", "-"]):
-        df = by_scenario[scenario]
-        (line,) = ax.plot(
-            df.week, df.coverage_median, linewidth=2, linestyle=style, label=label
-        )
-        ax.fill_between(
-            df.week,
-            df.coverage_lower,
-            df.coverage_upper,
-            color=line.get_color(),
-            alpha=0.2,
-            linewidth=0,
-        )
-
-    ax.axhspan(
-        100.0,
-        essential_level,
-        color="dimgray",
-        alpha=0.15,
-        label=(
-            "Full coverage: indoor vital (100%) to "
-            f"indoor essential workers ({essential_level:.0f}%)"
-        ),
-    )
-
-    ax.set_xlim(1, last_week)
-    # ax.set_ylim(0, essential_level * 1.05)
-    ax.set_ylim(0, 30)
-    ax.set_xlabel("Weeks since the start of the pandemic")
-    ax.set_ylabel("% of indoor vital worker requirement")
-    ax.set_title(
+    title = (
         "Global filtration supply against workforce requirements\n"
-        f"medians with {interval:.0f}% uncertainty intervals",
-        fontweight="bold",
+        f"medians with {interval:.0f}% uncertainty intervals"
     )
-    ax.grid(True, linestyle="--", alpha=0.4)
-    right = ax.secondary_yaxis(
-        "right",
-        functions=(
-            lambda y: y * 100.0 / essential_level,
-            lambda y: y * essential_level / 100.0,
-        ),
-    )
-    right.set_ylabel("% of indoor essential worker requirement")
-    ax.legend(
-        fontsize=9,
-        loc="upper center",
-        bbox_to_anchor=(0.5, -0.12),
-        ncol=2,
-        frameon=True,
-        framealpha=0.9,
+    _draw_scenario_coverage_ax(
+        ax, by_scenario, essential_level, last_week, title=title, ylim=(0, 30)
     )
     fig.tight_layout()
     _save_figure(fig, output_path)
 
 
-def plot_stacked_channels(output_path: Path, scenario: int) -> None:
+def plot_scenario_coverage_two_panel(output_path: Path) -> None:
+    """
+    Global coverage over time: full y-range above, 0–30% zoom below.
+
+    Arguments:
+        output_path (Path): PNG to write.
+    """
+    requirements = load_requirements()
+    essential_level = essential_requirement_level(requirements)
+    by_scenario = {}
+    for scenario in SCENARIO_LABELS:
+        df = load_coverage("vital", scenario)
+        by_scenario[scenario] = df[df.region == "Global"]
+    interval = by_scenario[1].interval_percent.iloc[0]
+    last_week = by_scenario[1].week.max()
+    zoom_ylim = (0, 30)
+
+    fig, (ax_top, ax_bottom) = plt.subplots(2, 1, figsize=(10, 10), sharex=True)
+    title_line = f"Medians ± {interval:.0f}% uncertainty intervals"
+    _draw_scenario_coverage_ax(
+        ax_top,
+        by_scenario,
+        essential_level,
+        last_week,
+        title=(
+            "Global filtration supply against workforce requirements (full scale)\n"
+            f"{title_line}"
+        ),
+        show_legend=False,
+        show_xlabel=False,
+    )
+    ax_top.add_patch(
+        Rectangle(
+            (1, zoom_ylim[0]),
+            last_week - 1,
+            zoom_ylim[1] - zoom_ylim[0],
+            fill=False,
+            linestyle="--",
+            linewidth=1.2,
+            edgecolor="0.25",
+            zorder=10,
+        )
+    )
+    _draw_scenario_coverage_ax(
+        ax_bottom,
+        by_scenario,
+        essential_level,
+        last_week,
+        title=(
+            "Global filtration supply against workforce requirements (0–30%)\n"
+            f"{title_line}"
+        ),
+        show_legend=False,
+        ylim=zoom_ylim,
+    )
+    label_x, label_y = SCENARIO_COVERAGE_PANEL_LABEL_XY
+    label_panel(ax_top, "a", x=label_x, y=label_y)
+    label_panel(ax_bottom, "b", x=label_x, y=label_y)
+    fig.subplots_adjust(hspace=0.35, bottom=0.12)
+    fig.legend(
+        *ax_top.get_legend_handles_labels(),
+        fontsize=9,
+        loc="center",
+        bbox_to_anchor=(0.5, 0.02),
+        ncol=2,
+        frameon=LEGEND_FRAMEON,
+        framealpha=0.9,
+    )
+    _save_figure(fig, output_path)
+
+
+def _stackplot_channel_colors(swap_repurposed_cr_baghouse=False):
+    """
+    Default stackplot colours for the supply channels.
+
+    Arguments:
+        swap_repurposed_cr_baghouse (bool): If True, swap repurposed CR box and
+            repurposed baghouse colours so CR box channels are both green.
+
+    Returns:
+        list: One colour per channel in CHANNEL_LABELS order.
+    """
+    colors = list(plt.rcParams["axes.prop_cycle"].by_key()["color"])
+    channel_colors = colors[: len(CHANNEL_LABELS)]
+    if swap_repurposed_cr_baghouse:
+        channel_colors[1], channel_colors[5] = channel_colors[5], channel_colors[1]
+    return channel_colors
+
+
+def plot_stacked_channels(
+    output_path: Path,
+    scenario: int,
+    results_dir: Path = PACS_PRIORITIZED_RESULTS,
+    title_suffix: str = "",
+    swap_repurposed_cr_baghouse_colors: bool = False,
+) -> None:
     """
     Global coverage over time, broken down by supply channel.
 
     Arguments:
         output_path (Path): PNG to write.
         scenario (int): 1, 2 or 3.
+        results_dir (Path): Directory with ``ecadr_by_channel`` CSVs.
+        title_suffix (str): Extra line for the figure title.
+        swap_repurposed_cr_baghouse_colors (bool): Swap repurposed CR box and
+            repurposed baghouse colours.
     """
     channels = pd.read_csv(
-        SCALE_UP_RESULTS / f"ecadr_by_channel_scenario{scenario}.csv", index_col="week"
+        results_dir / f"ecadr_by_channel_scenario{scenario}.csv", index_col="week"
     )
-    requirement = load_requirements().loc["Global", "indoor_vital_ecadr_l_per_s"]
+    requirement = pd.read_csv(
+        results_dir / "requirements_by_region.csv", index_col="region"
+    ).loc["Global", "indoor_vital_ecadr_l_per_s"]
     shares = 100.0 * channels[list(CHANNEL_LABELS)] / requirement
 
     fig, ax = plt.subplots(figsize=(10, 6))
@@ -240,23 +374,24 @@ def plot_stacked_channels(output_path: Path, scenario: int) -> None:
         shares.index,
         *[shares[name] for name in CHANNEL_LABELS],
         labels=list(CHANNEL_LABELS.values()),
+        colors=_stackplot_channel_colors(swap_repurposed_cr_baghouse_colors),
         alpha=0.75,
     )
     ax.set_xlim(shares.index.min(), shares.index.max())
     ax.set_ylim(0, None)
     ax.set_xlabel("Weeks since the start of the pandemic")
     ax.set_ylabel("% of indoor vital worker requirement")
-    ax.set_title(
-        f"Global filtration supply by source\n{SCENARIO_LABELS[scenario]}",
-        fontweight="bold",
-    )
+    title = f"Global filtration supply by source\n{SCENARIO_LABELS[scenario]}"
+    if title_suffix:
+        title += f"\n{title_suffix}"
+    ax.set_title(title, fontweight="bold")
     ax.grid(True, linestyle="--", alpha=0.4)
     ax.legend(
         fontsize=9,
         loc="upper center",
         bbox_to_anchor=(0.5, -0.12),
         ncol=2,
-        frameon=True,
+        frameon=LEGEND_FRAMEON,
         framealpha=0.9,
     )
     fig.tight_layout()
@@ -372,7 +507,7 @@ def plot_supply_and_coverage_maps(output_path: Path, scenario: int, week: int) -
         raise ValueError(f"No vital coverage at week {week}")
     coverage_map = expand_regions_to_countries(at_week, "region", "coverage_median")
 
-    fig, (ax_coverage, ax_supply) = plt.subplots(
+    fig, (ax_supply, ax_coverage) = plt.subplots(
         2, 1, figsize=(10, 9), layout="constrained"
     )
     fig.set_constrained_layout_pads(hspace=PANEL_HSPACE)
@@ -387,9 +522,10 @@ def plot_supply_and_coverage_maps(output_path: Path, scenario: int, week: int) -
         vmin=0.0,
         alpha=REGION_COVERAGE_ALPHA,
     )
-    label_panel(ax_supply, "b")
+    label_panel(ax_supply, "a")
     ax_supply.set_title(
-        f"Filtration supply by UN region (week {week})",
+        # f"Filtration supply by UN region (week {week})",
+        f"Filtration supply by UN region after 3 months",
         fontsize=12,
         fontweight="bold",
         pad=6,
@@ -406,18 +542,17 @@ def plot_supply_and_coverage_maps(output_path: Path, scenario: int, week: int) -
         vmax=REGION_COVERAGE_VMAX,
         alpha=REGION_COVERAGE_ALPHA,
     )
-    label_panel(ax_coverage, "a")
+    label_panel(ax_coverage, "b")
     ax_coverage.set_title(
-        f"Indoor vital workers covered by filtration (week {week})",
+        # f"Indoor vital workers covered by filtration (week {week})",
+        f"Indoor vital workers covered by filtration after 3 months",
         fontsize=12,
         fontweight="bold",
         pad=6,
     )
 
     # The panels are on different scales, so each carries its own bar
-    add_horizontal_colorbar(
-        fig, supply_mappable, ax_supply, "eCADR (billion L/s)"
-    )
+    add_horizontal_colorbar(fig, supply_mappable, ax_supply, "eCADR (billion L/s)")
     add_horizontal_colorbar(
         fig, coverage_mappable, ax_coverage, "% of indoor vital workers covered"
     )
@@ -432,9 +567,22 @@ def main(output_dir: Path, scenario: int, week: int) -> None:
     plot_scenario_coverage(scenario_path)
     print(f"Wrote {scenario_path}")
 
+    scenario_two_panel_path = output_dir / "ScenarioCoverage_Manuscript_two_panel.png"
+    plot_scenario_coverage_two_panel(scenario_two_panel_path)
+    print(f"Wrote {scenario_two_panel_path}")
+
     stacked_path = output_dir / "Global_stacked_cadr.png"
-    plot_stacked_channels(stacked_path, scenario)
+    plot_stacked_channels(stacked_path, scenario, swap_repurposed_cr_baghouse_colors=True)
     print(f"Wrote {stacked_path}")
+
+    cr_path = output_dir / "Global_stacked_cadr_CR_boxes_prioritized.png"
+    plot_stacked_channels(
+        cr_path,
+        scenario,
+        results_dir=CR_BOXES_PRIORITIZED_RESULTS,
+        title_suffix="CR boxes prioritized (panel filters diverted from PACs)",
+    )
+    print(f"Wrote {cr_path}")
 
     map_path = output_dir / f"FiltrationCoverageByRegion_Manuscript_Week{week}.png"
     plot_region_coverage_maps(map_path, scenario, week)

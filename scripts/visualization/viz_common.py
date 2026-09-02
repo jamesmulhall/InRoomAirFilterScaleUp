@@ -36,9 +36,10 @@ _REPO_ROOT = Path(__file__).resolve().parents[2]
 if str(_REPO_ROOT / "src") not in sys.path:
     sys.path.insert(0, str(_REPO_ROOT / "src"))
 
-# Re-exported so the figure scripts have one place to import paths from
 from paths import (  # noqa: E402,F401
     ESSENTIAL_WORKERS_RESULTS,
+    CR_BOXES_PRIORITIZED_RESULTS,
+    PACS_PRIORITIZED_RESULTS,
     SCALE_UP_RESULTS,
     VISUALIZATIONS_RESULTS,
 )
@@ -129,11 +130,11 @@ def load_map_border() -> gpd.GeoDataFrame:
     return gpd.read_file(ALLFED_MAP_BORDER_URL)
 
 
-def label_panel(ax: plt.Axes, letter: str) -> None:
+def label_panel(ax: plt.Axes, letter: str, x: float = 0.05, y: float = 1.065) -> None:
     """Mark a panel with its letter, inside the axes so titles stay clear."""
     ax.text(
-        0.05,
-        1.065,
+        x,
+        y,
         f"({letter})",
         transform=ax.transAxes,
         fontsize=13,

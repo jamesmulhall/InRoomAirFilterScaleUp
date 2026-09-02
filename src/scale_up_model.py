@@ -23,6 +23,7 @@ import pandas as pd
 import requests
 import country_converter as coco
 
+from essential_workers import backfill_neighbours
 from mc_distributions import sample_normal, sample_lognormal, sample_uniform
 
 # Input and output locations
@@ -33,6 +34,7 @@ MVA_INDICATOR = "NV.IND.MANF.CD"
 MVA_URL = f"https://api.worldbank.org/v2/country/all/indicator/{MVA_INDICATOR}"
 MVA_YEARS = "2010:2024"
 BAGHOUSE_FILE = "data/scale_up/BaghouseAirflow.csv"
+COMTRADE_FILE = "data/scale_up/comtrade_HS842139.xlsx"
 WORKERS_FILE = "results/essential_workers/EssentialWorkersByCountry.csv"
 RESULTS_DIR = "results/scale_up"
 
@@ -95,6 +97,10 @@ def load_settings(path=SETTINGS_FILE):
     table = pd.read_csv(path).set_index("setting")["value"]
     settings = {}
     for name, value in table.items():
+        lowered = str(value).strip().lower()
+        if lowered in ("true", "false"):
+            settings[name] = lowered == "true"
+            continue
         try:
             settings[name] = float(value)
         except ValueError:
@@ -186,9 +192,76 @@ def fetch_mva(cache=MVA_CACHE, years=MVA_YEARS, refresh=False):
     return df
 
 
-def load_country_data():
+def load_filter_export_value_per_kg(path=COMTRADE_FILE):
+    """
+    USD per kilogram of HS 842139 gas-filter exports, from UN Comtrade.
+
+    Value per kilogram is ``primaryValue / netWgt``. Rows without a positive
+    weight or value are dropped. If more than one year is present, each
+    reporter keeps its latest year.
+
+    Arguments:
+        path (str): Path to the Comtrade Excel extract.
+
+    Returns:
+        pandas.DataFrame: Columns iso3 and value_per_kg.
+    """
+    trade = pd.read_excel(path)
+    usable = trade[(trade.netWgt > 0) & (trade.primaryValue > 0)].copy()
+    usable["value_per_kg"] = usable.primaryValue / usable.netWgt
+    latest = usable.sort_values("refYear").groupby("reporterISO", as_index=False).last()
+    return latest.rename(columns={"reporterISO": "iso3"})[["iso3", "value_per_kg"]]
+
+
+def divide_mva_by_export_price(df, value_per_kg, similar_iso3=None):
+    """
+    Divide manufacturing value added by export value per kilogram.
+
+    Missing prices are filled the same way as other country gaps in this
+    repository: the mean of ``SIMILAR_ISO3`` neighbours, then the median of
+    countries that still have a price (the overlap pipeline's global
+    fallback). Countries with no MVA stay at zero.
+
+    Arguments:
+        df (pandas.DataFrame): Country table with iso3 and mva_usd.
+        value_per_kg (pandas.DataFrame): Output of load_filter_export_value_per_kg.
+        similar_iso3 (dict): Neighbour map; the pipeline default is used if
+            omitted.
+
+    Returns:
+        pandas.DataFrame: The country table with mva_usd in quantity units.
+    """
+    out = df.merge(value_per_kg, on="iso3", how="left")
+    from_trade = out.value_per_kg.notna()
+    filled = backfill_neighbours(
+        out.rename(columns={"iso3": "Country Code"}),
+        similar_iso3=similar_iso3,
+        cols=["value_per_kg"],
+    ).rename(columns={"Country Code": "iso3"})
+    from_neighbour = filled.value_per_kg.notna() & ~from_trade
+    fallback = filled.value_per_kg.median()
+    from_global = filled.value_per_kg.isna()
+    filled["value_per_kg"] = filled["value_per_kg"].fillna(fallback)
+    print(
+        f"  filter export USD/kg: {from_trade.sum()} from Comtrade, "
+        f"{from_neighbour.sum()} from neighbours, "
+        f"{from_global.sum()} from the global median ({fallback:.1f})"
+    )
+    has_mva = filled.mva_usd > 0
+    filled.loc[has_mva, "mva_usd"] = (
+        filled.loc[has_mva, "mva_usd"] / filled.loc[has_mva, "value_per_kg"]
+    )
+    return filled.drop(columns=["value_per_kg"])
+
+
+def load_country_data(adjust_mva_by_cost=False):
     """
     Build the country table from manufacturing, coal and workforce inputs.
+
+    Arguments:
+        adjust_mva_by_cost (bool): If True, divide MVA by Comtrade HS 842139
+            export value per kilogram so cheaper producers get a larger
+            allocation.
 
     Returns:
         pandas.DataFrame: One row per country with manufacturing value added,
@@ -221,6 +294,10 @@ def load_country_data():
     df = df.merge(baghouse[["iso3", "Operating MW"]], on="iso3", how="left")
     df[["mva_usd", "Operating MW"]] = df[["mva_usd", "Operating MW"]].fillna(0)
     df = df.dropna(subset=["region"]).reset_index(drop=True)
+
+    if adjust_mva_by_cost:
+        print("  dividing MVA by HS 842139 export value per kilogram")
+        df = divide_mva_by_export_price(df, load_filter_export_value_per_kg())
 
     no_mva = (df.mva_usd <= 0).sum()
     print(
@@ -265,26 +342,78 @@ def production_shares(df, exponent, min_production, total_filters):
     return shares / shares.sum()
 
 
-def pac_ecadr_global(samples):
+def pac_panel_filter_units(samples):
     """
-    Global annual eCADR from commercial portable air cleaners.
+    Panel-format PAC units per year.
 
-    Implements methods equations 1 and 2.
+    These are the units that go to CR boxes when ``prioritize_cr_boxes`` is
+    True, and stay with PACs when it is False.
 
     Arguments:
         samples (dict): Output of sample_all.
 
     Returns:
+        numpy.ndarray: PAC units per year, shape (n,).
+    """
+    return (
+        samples["pac_market_revenue_usd"]
+        * samples["fraction_room"]
+        * samples["fraction_merv13_plus"]
+        * (1 - samples["fraction_non_panel"])
+        / samples["pac_price_usd"]
+    )
+
+
+def pac_panel_cr_box_filters(samples):
+    """
+    Panel-format PAC units expressed as 20x20x1 filter counts.
+
+    PAC panel filters are smaller than the filters CR boxes use (equation 4).
+    Each PAC unit is scaled by the ratio of filter volumes before subtracting
+    from the CR box filter pool.
+
+    Arguments:
+        samples (dict): Output of sample_all.
+
+    Returns:
+        numpy.ndarray: Equivalent 20x20x1 filters per year, shape (n,).
+    """
+    volume_ratio = (
+        samples["pac_panel_filter_volume_m3"] / samples["filter_volume_m3"]
+    )
+    return pac_panel_filter_units(samples) * volume_ratio
+
+
+def pac_ecadr_global(samples, prioritize_cr_boxes=False):
+    """
+    Global annual eCADR from commercial portable air cleaners.
+
+    Implements methods equations 1 and 2. When ``prioritize_cr_boxes`` is
+    True, panel-format units are left out of PAC production and counted
+    toward CR boxes instead. When False (the default), PACs take the full
+    eligible share and those panel units are subtracted from the CR box
+    filter pool.
+
+    Arguments:
+        samples (dict): Output of sample_all.
+        prioritize_cr_boxes (bool): If True, redirects panel filters to CR
+            boxes instead of PACs. If False, panel filters stay with PACs.
+
+    Returns:
         numpy.ndarray: eCADR in L/s per year of production, shape (n,).
     """
-    units = (
+    units_non_panel = (
         samples["pac_market_revenue_usd"]
         * samples["fraction_room"]
         * samples["fraction_merv13_plus"]
         * samples["fraction_non_panel"]
         / samples["pac_price_usd"]
     )
-    return units * samples["pac_ecadr_l_per_s"]
+    units_panel_pac = pac_panel_filter_units(samples)
+    units_total = units_non_panel + units_panel_pac
+    if prioritize_cr_boxes:
+        return units_non_panel * samples["pac_ecadr_l_per_s"]
+    return units_total * samples["pac_ecadr_l_per_s"]
 
 
 def merv_revenue_shares(samples, bands=MERV13_BANDS):
@@ -370,7 +499,7 @@ def fan_production(samples, settings):
     return pc_fans / settings["pc_fans_per_cr_box"] + box_fans
 
 
-def cr_box_ecadr_global(samples, settings, market_revenue):
+def cr_box_ecadr_global(samples, settings, market_revenue, panel_pac_deduction=None):
     """
     Global annual eCADR from CR boxes, limited by filters or fans.
 
@@ -379,13 +508,16 @@ def cr_box_ecadr_global(samples, settings, market_revenue):
     Arguments:
         samples (dict): Output of sample_all.
         settings (dict): Fixed settings.
-        n (int): Number of draws.
         market_revenue (numpy.ndarray): Air filter revenue base, shape (n,).
+        panel_pac_deduction (numpy.ndarray): 20x20x1-equivalent filters to
+            subtract from the pool when PACs keep their panel-format share.
 
     Returns:
         tuple: (eCADR in L/s per year, filters per year, limiting component).
     """
     filters = filter_production(samples, market_revenue)
+    if panel_pac_deduction is not None:
+        filters = np.maximum(filters - panel_pac_deduction, 0.0)
     from_filters = filters / settings["filters_per_cr_box"]
     from_fans = fan_production(samples, settings)
     boxes = np.minimum(from_filters, from_fans)
@@ -603,7 +735,7 @@ def coverage(cumulative, requirement, df, interval):
     return pd.concat(frames, ignore_index=True)
 
 
-def build_streams(df, samples, settings, n, scenario, shares):
+def build_streams(df, samples, settings, n, scenario, shares, prioritize_cr_boxes=False):
     """
     Cumulative weekly eCADR for every supply channel under one scenario.
 
@@ -614,6 +746,9 @@ def build_streams(df, samples, settings, n, scenario, shares):
         n (int): Number of draws.
         scenario (int): 1, 2 or 3.
         shares (numpy.ndarray): Country share of global production.
+        prioritize_cr_boxes (bool): If True, panel PAC units feed CR boxes
+            instead of PACs. If False (the default), panel filters stay with
+            PACs.
 
     Returns:
         dict: Channel name to cumulative eCADR, shape (weeks, n, n_countries).
@@ -622,9 +757,12 @@ def build_streams(df, samples, settings, n, scenario, shares):
     essential = df["%Essential Workers"].to_numpy(float)
 
     total_revenue = samples["total_air_filter_revenue_usd"]
-    pac_global = pac_ecadr_global(samples)
+    panel_pac_deduction = (
+        None if prioritize_cr_boxes else pac_panel_cr_box_filters(samples)
+    )
+    pac_global = pac_ecadr_global(samples, prioritize_cr_boxes=prioritize_cr_boxes)
     cr_global, baseline_filters, limiting = cr_box_ecadr_global(
-        samples, settings, total_revenue
+        samples, settings, total_revenue, panel_pac_deduction=panel_pac_deduction
     )
     print(f"  CR box production is limited by {limiting}")
 
@@ -688,7 +826,7 @@ def build_streams(df, samples, settings, n, scenario, shares):
     return streams
 
 
-def write_requirements(df):
+def write_requirements(df, results_dir=RESULTS_DIR):
     """
     Write the eCADR requirement of each UN region, and of the world.
 
@@ -697,6 +835,7 @@ def write_requirements(df):
 
     Arguments:
         df (pandas.DataFrame): Country table.
+        results_dir (str): Directory for the output CSV.
     """
     columns = [
         "Indoor Vital CADR Requirement (L/s)",
@@ -706,10 +845,10 @@ def write_requirements(df):
     totals.loc["Global"] = totals.sum()
     totals.columns = ["indoor_vital_ecadr_l_per_s", "indoor_essential_ecadr_l_per_s"]
     totals.index.name = "region"
-    totals.to_csv(os.path.join(RESULTS_DIR, "requirements_by_region.csv"))
+    totals.to_csv(os.path.join(results_dir, "requirements_by_region.csv"))
 
 
-def write_results(df, streams, settings, scenario):
+def write_results(df, streams, settings, scenario, results_dir=RESULTS_DIR):
     """
     Write weekly eCADR by country and channel, and workforce coverage.
 
@@ -722,6 +861,7 @@ def write_results(df, streams, settings, scenario):
         streams (dict): Output of build_streams.
         settings (dict): Fixed settings.
         scenario (int): 1, 2 or 3.
+        results_dir (str): Directory for the output CSVs.
     """
     weeks = int(settings["weeks"])
     total = sum(streams.values())
@@ -732,12 +872,12 @@ def write_results(df, streams, settings, scenario):
         index=df["Country Name"],
         columns=range(1, weeks + 1),
     )
-    weekly.to_csv(os.path.join(RESULTS_DIR, f"weekly_ecadr_by_country_{suffix}.csv"))
+    weekly.to_csv(os.path.join(results_dir, f"weekly_ecadr_by_country_{suffix}.csv"))
 
     pd.DataFrame(
         {name: np.median(streams[name].sum(axis=2), axis=1) for name in CHANNELS},
         index=pd.Index(range(1, weeks + 1), name="week"),
-    ).to_csv(os.path.join(RESULTS_DIR, f"ecadr_by_channel_{suffix}.csv"))
+    ).to_csv(os.path.join(results_dir, f"ecadr_by_channel_{suffix}.csv"))
 
     for label, column in [
         ("vital", "Indoor Vital CADR Requirement (L/s)"),
@@ -750,7 +890,7 @@ def write_results(df, streams, settings, scenario):
             settings["uncertainty_interval"],
         )
         result.to_csv(
-            os.path.join(RESULTS_DIR, f"coverage_{label}_{suffix}.csv"), index=False
+            os.path.join(results_dir, f"coverage_{label}_{suffix}.csv"), index=False
         )
         global_rows = result[result.region == "Global"].set_index("week")
         for week in REPORT_WEEKS:
@@ -758,6 +898,35 @@ def write_results(df, streams, settings, scenario):
                 f"    {label} workers covered globally at week {week:>2}: "
                 f"{global_rows.loc[week, 'coverage_median']:.1%}"
             )
+
+
+def run_scale_up(df, samples, settings, n, shares, results_dir, prioritize_cr_boxes):
+    """
+    Run all three scenarios and write results to one directory.
+
+    Arguments:
+        df (pandas.DataFrame): Country table.
+        samples (dict): Output of sample_all.
+        settings (dict): Fixed settings.
+        n (int): Number of draws.
+        shares (numpy.ndarray): Country share of global production.
+        results_dir (str): Where to write the CSVs.
+        prioritize_cr_boxes (bool): Whether panel PAC units feed CR boxes.
+    """
+    os.makedirs(results_dir, exist_ok=True)
+    write_requirements(df, results_dir=results_dir)
+    for scenario, description in SCENARIOS.items():
+        print(f"\nScenario {scenario}: {description}")
+        streams = build_streams(
+            df,
+            samples,
+            settings,
+            n,
+            scenario,
+            shares,
+            prioritize_cr_boxes=prioritize_cr_boxes,
+        )
+        write_results(df, streams, settings, scenario, results_dir=results_dir)
 
 
 def main():
@@ -771,7 +940,7 @@ def main():
     n = int(settings["n_draws"])
     samples = sample_all(params, n)
 
-    df = load_country_data()
+    df = load_country_data(bool(settings.get("adjust_MVA_by_cost")))
 
     print("\nAllocating global production across countries...")
     total_filters = filter_production(
@@ -786,13 +955,34 @@ def main():
     )
 
     os.makedirs(RESULTS_DIR, exist_ok=True)
-    write_requirements(df)
-    for scenario, description in SCENARIOS.items():
-        print(f"\nScenario {scenario}: {description}")
-        streams = build_streams(df, samples, settings, n, scenario, shares)
-        write_results(df, streams, settings, scenario)
+    pacs_prioritized_dir = os.path.join(RESULTS_DIR, "PACs_prioritized")
+    cr_boxes_prioritized_dir = os.path.join(RESULTS_DIR, "CR_boxes_prioritized")
 
-    print(f"\nResults written to {RESULTS_DIR}/")
+    print("\nPACs prioritized (panel filters stay with PACs)...")
+    run_scale_up(
+        df,
+        samples,
+        settings,
+        n,
+        shares,
+        pacs_prioritized_dir,
+        prioritize_cr_boxes=False,
+    )
+
+    print("\nCR boxes prioritized (panel filters diverted from PACs)...")
+    run_scale_up(
+        df,
+        samples,
+        settings,
+        n,
+        shares,
+        cr_boxes_prioritized_dir,
+        prioritize_cr_boxes=True,
+    )
+
+    print(
+        f"\nResults written to {pacs_prioritized_dir}/ and {cr_boxes_prioritized_dir}/"
+    )
 
 
 if __name__ == "__main__":

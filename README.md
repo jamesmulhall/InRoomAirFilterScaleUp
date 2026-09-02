@@ -21,7 +21,8 @@ Repository: https://drive.google.com/drive/folders/1PC_QixM3_B3nh0tNhnJJnPxHECVE
 | `data/essential_workers/` | ILO, O*NET, poll, crosswalk, labour force, JEM (optional) |
 | `data/scale_up/` | Parameters, settings, coal baghouse airflow, cached World Bank MVA |
 | `results/essential_workers/` | Essential/vital worker CSV outputs |
-| `results/scale_up/` | Weekly eCADR and workforce coverage for each scenario |
+| `results/scale_up/PACs_prioritized/` | Weekly eCADR and workforce coverage for each scenario (default: panel filters stay with PACs) |
+| `results/scale_up/CR_boxes_prioritized/` | Same outputs when PAC panel filters are diverted to CR boxes |
 | `results/visualizations/` | ALLFED-styled manuscript figures (300 DPI PNG) |
 | `src/preprocessing.py` | Load and transform raw essential-worker inputs |
 | `src/essential_workers.py` | Overlap calibration, labour-force pipeline, validation |
@@ -93,7 +94,7 @@ uv export --format requirements-txt --no-hashes --no-emit-project -o requirement
 ## Results
 
 - **`results/essential_workers/`** — per-country/regional worker counts, per-group worker counts and ASHRAE-241 CADR requirements (ECA × 5.7), validation, overlap calibration, on-site housing requirements
-- **`results/scale_up/`** — for each scenario: `weekly_ecadr_by_country_*`, `ecadr_by_channel_*` (weekly, global) and `coverage_{vital,essential}_*` (median and uncertainty interval by region and week), plus `requirements_by_region.csv`, the eCADR each region is measured against
+- **`results/scale_up/PACs_prioritized/`** — for each scenario: `weekly_ecadr_by_country_*`, `ecadr_by_channel_*` (weekly, global) and `coverage_{vital,essential}_*` (median and uncertainty interval by region and week), plus `requirements_by_region.csv`, the eCADR each region is measured against. This is the default run (panel filters stay with PACs). **`results/scale_up/CR_boxes_prioritized/`** holds the same outputs when panel filters are diverted to CR boxes
 - **`results/linear_models/`** — plots of the two fitted regressions
 - **`results/visualizations/`** — ALLFED-styled manuscript figures
 
@@ -119,7 +120,7 @@ the named colormap (the default drops the black tip of `arctic_r`).
 - `plot_essential_workers.py` — `PctVitalWorkers_Manuscript`, `PctEssentialWorkers_Manuscript` and the four-panel `PctWorkersByCountry_Manuscript_2x2`
 - `plot_workers_vs_gdp.py` — `WorkerShares_vs_GDP_PPP` and `FoodShareOfWorkforce_vs_GDP_PPP`, and the correlation tables behind them
 - `plot_group_composition.py` — `GroupComposition_Global`, the occupational make-up of the workforces
-- `plot_filtration_coverage.py` — `ScenarioCoverage_Manuscript` (all three scenarios with uncertainty intervals), `Global_stacked_cadr` (supply by channel), `FiltrationCoverageByRegion_Manuscript_Week13` (two-panel essential and vital maps), `FiltrationSupplyAndCoverage_Manuscript_Week13` (regional eCADR supply above, vital coverage below), plus single-panel vital and essential maps. Coverage is a share of the indoor vital requirement. Pass `--scenario` for the stacked figure and the maps, and `--week` for the mapped week
+- `plot_filtration_coverage.py` — `ScenarioCoverage_Manuscript` (all three scenarios with uncertainty intervals), `Global_stacked_cadr` (supply by channel, PACs prioritized), `Global_stacked_cadr_CR_boxes_prioritized` (same figure when panel filters are diverted to CR boxes), `FiltrationCoverageByRegion_Manuscript_Week13` (two-panel essential and vital maps), `FiltrationSupplyAndCoverage_Manuscript_Week13` (regional eCADR supply above, vital coverage below), plus single-panel vital and essential maps. Coverage is a share of the indoor vital requirement. Pass `--scenario` for the stacked figure and the maps, and `--week` for the mapped week
 
 ---
 

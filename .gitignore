@@ -130,3 +130,5 @@ dmypy.json
 
 # macOS
 .DS_Store
+results/essential_workers/.~lock.EssentialWorkersByRegion.csv#
+data/scale_up/.~lock.comtrade_HS842139.xlsx#

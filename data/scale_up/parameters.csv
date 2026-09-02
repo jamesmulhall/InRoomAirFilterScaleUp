@@ -14,10 +14,9 @@ fraction_non_panel,0.6,0.7,normal,fraction,Panel filter market (~7 B) is approx.
 https://www.marketsandmarkets.com/Market-Reports/panel-filters-market-118890404.html"
 pac_price_usd,117,439,lognormal,USD/unit,"""An initial cost-survey of commercially available Energy Star rated in-room filters (U.S.EPA 2021a) designed for the residential market found costs ranging from $0.71 to $2.66 per CADR in units of ft3 min?1"". 0.71 to 2.66 * the median CADR below of 165 CFM (=78 L/s) = $117-439",https://www.medrxiv.org/content/10.1101/2022.01.09.22268972v1.full
 pac_ecadr_l_per_s,55,144,lognormal,L/s/unit,Approx. Median and IQR from Energy STAR dataset of 236 models. Median is slightly lower than mean (78 vs 99),https://catalog.data.gov/dataset/energy-star-certified-room-air-cleaners-v3-0
-cr_box_ecadr_l_per_s,110,260,normal,L/s/unit,Estimated from muliple studies and tests of CR boxes,"https://pmc.ncbi.nlm.nih.gov/articles/PMC9828579)~122 L/s)
+cr_box_ecadr_l_per_s,110,260,normal,L/s/unit,Estimated from multiple studies and tests of CR boxes,"https://pmc.ncbi.nlm.nih.gov/articles/PMC9828579)~122 L/s)
 https://pmc.ncbi.nlm.nih.gov/articles/PMC9107182/#t0015(~258 L/s)
-https://www.sciencedirect.com/science/article/abs/pii/S0360132324004451?via%3Dihub (~113 L/s real-world use in schools)    
-"
+https://www.sciencedirect.com/science/article/abs/pii/S0360132324004451?via%3Dihub (~113 L/s real-world use in schools)    "
 price_per_volume_1_4,924.32,1138.85,normal,USD/m3 media,From CR_Box_MASTER sheet 'Filter Price Per Merv Rating'.,"https://www.amazon.com/Pamlico-Air-Fiberglass-Filters-SUPPLY/dp/B0B6R45PZ4/ref=sr_1_5?crid=2H4YPVQZK6X3V&dib=eyJ2IjoiMSJ9.rnmzd9tBzNF5tkEprB_0l4mAspzRHs4oHTXnsim6cyzHXGHvx1ajTflUz37bqeSTPZAg1gicLlzb5_uNSXUO7tQpyZRiXkpJpc0iha_MGzGXBIK8kmp_sx26VMKUt604frPvT-dlOfOsOjrdulQMnWhEWRN594YM_iXrdEzq1Sd09xIePPZEcL9j96JD3lia1ykYMjMmVrJNvc-qw3QbqLDYIa07gK2XAuTCV-dC3Ccr4tFZWexulRTyIQaTwKbcAllPJ-iCRPRLfrH2VJERGXr4Z-wPQsq8ugx98sgS0ss.l5gBez7Y_eHUS4RIvZOnHXhqak4L9herumG-PdQ28T0&dib_tag=se&keywords=filter+20x20x1+merv+4&qid=1755491029&sprefix=filter+20x20x1+merv+%2Caps%2C352&sr=8-5
 https://www.amazon.com/Fiberglass-Air-Filter-MERV-4-pack/dp/B0BQZCKZKS/ref=sr_1_7?crid=2H4YPVQZK6X3V&dib=eyJ2IjoiMSJ9.rnmzd9tBzNF5tkEprB_0l4mAspzRHs4oHTXnsim6cyzHXGHvx1ajTflUz37bqeSTPZAg1gicLlzb5_uNSXUO7tQpyZRiXkpJpc0iha_MGzGXBIK8kmp_sx26VMKUt604frPvT-dlOfOsOjrdulQMnWhEWRN594YM_iXrdEzq1Sd09xIePPZEcL9j96JD3lia1ykYMjMmVrJNvc-qw3QbqLDYIa07gK2XAuTCV-dC3Ccr4tFZWexulRTyIQaTwKbcAllPJ-iCRPRLfrH2VJERGXr4Z-wPQsq8ugx98sgS0ss.l5gBez7Y_eHUS4RIvZOnHXhqak4L9herumG-PdQ28T0&dib_tag=se&keywords=filter+20x20x1+merv+4&qid=1755491106&sprefix=filter+20x20x1+merv+%2Caps%2C352&sr=8-7
 https://www.mscdirect.com/product/details/37939105"
@@ -41,6 +40,7 @@ https://protecta.com.au/hepa-filter-has500-hf.html"
 fraction_panel,0.3,0.4,normal,fraction,Panel filter market (~7 B) is approx. 35% of global market (~20 B),"https://www.researchandmarkets.com/report/global-panel-filters-market
 https://www.marketsandmarkets.com/Market-Reports/panel-filters-market-118890404.html"
 filter_volume_m3,0.006555,0.006555,uniform,m3/filter,Volume of a 20x20x1 filter (0.508 x 0.508 x 0.0254 m). Equation 4 divides revenue by price per m3 of media times this volume.,
+pac_panel_filter_volume_m3,0.001638,0.003203,uniform,m3/filter,Volume of a typical panel-format PAC filter (10x10x1 to 14x14x1 in). Used to convert panel PAC units to 20x20x1 filter counts when subtracting from the CR box filter pool.,
 filter_media_area_m2,0.47,0.47,uniform,m2/filter,"Media area per pleated filter, used only for the meltblown mass cap. Manufacturer datasheets cluster at 0.51 m2 (5.5 sq ft).",https://www.purolatorairfilters.com/pdfs/PuroGreen-13.pdf
 baghouse_efficiency,0.5,0.8,normal,fraction,"Methods 2.3.3, minimum efficiency as a function of particle size.",https://www.mdpi.com/1660-4601/16/2/247
 baghouse_utilisation,0.1,0.35,normal,fraction,Share of coal units fitted with baghouses rather than electrostatic precipitators.,"https://www.mee.gov.cn/gkml/hbb/bgth/201706/W020170623582998746402.pdf pg 12-13 translated
@@ -72,5 +72,4 @@ box_fan_price_usd,20,44,normal,USD/fan,Average price per box fan.,"https://www.a
 https://www.walmart.com/ip/Lasko-Products-3723-Premium-Box-Fan/16503180
 https://north40.com/lasko-3723-premium-3-speed-box-fan-20
 https://www.homedepot.com/p/Lasko-Premium-20-in-3-Speed-Box-Fan-LKO-3723/317261256
-https://www.target.com/p/impress-20-inch-3-speed-box-fan-white/-/A-91830729
-"
+https://www.target.com/p/impress-20-inch-3-speed-box-fan-white/-/A-91830729"
