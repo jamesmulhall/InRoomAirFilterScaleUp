@@ -79,22 +79,49 @@ def pct_to_indoor_fraction(
     return 0.0
 
 
-def location_to_indoor_fraction(location: float) -> float:
-    """JEM Location scale: nearest of 0/1 → 0%, 2 → 50%, 3 → 100%."""
-    buckets = {0: 0.0, 1: 0.0, 2: 0.5, 3: 1.0}
+def location_to_indoor_fraction(location: float, *, partial: bool = True) -> float:
+    """
+    Map JEM Location to an indoor fraction using the nearest bucket.
+
+    Arguments:
+        location (float): JEM Location score (0–3).
+        partial (bool): If True, bucket 2 → 50%; if False, buckets 2 and 3 → 100%.
+
+    Returns:
+        float: Indoor fraction in [0, 1], or NaN when location is missing.
+    """
+    if partial:
+        buckets = {0: 0.0, 1: 0.0, 2: 0.5, 3: 1.0}
+    else:
+        buckets = {0: 0.0, 1: 0.0, 2: 1.0, 3: 1.0}
     if pd.isna(location):
         return float("nan")
     nearest = min(buckets, key=lambda k: abs(float(location) - k))
     return buckets[nearest]
 
 
-def load_jem_l4_indoor_fraction(jem_path: Path) -> Dict[str, float]:
-    """Mean Location across JEM country sheets → indoor fraction per ISCO L4."""
+def load_jem_l4_indoor_fraction(
+    jem_path: Path,
+    *,
+    partial: bool = True,
+) -> Dict[str, float]:
+    """
+    Mean Location across JEM country sheets → indoor fraction per ISCO L4.
+
+    Arguments:
+        jem_path (Path): Path to ``job_exposure_matrix.xls``.
+        partial (bool): Passed to :func:`location_to_indoor_fraction`.
+
+    Returns:
+        dict: ISCO L4 code → indoor fraction.
+    """
     sheets = pd.read_excel(jem_path, sheet_name=None)
     df = pd.concat(sheets.values(), ignore_index=True)
     df["ISCO-08"] = df["ISCO-08"].astype(str).str.zfill(4)
     loc = df.groupby("ISCO-08")["Location"].mean()
-    return {str(k): location_to_indoor_fraction(v) for k, v in loc.items()}
+    return {
+        str(k): location_to_indoor_fraction(v, partial=partial) for k, v in loc.items()
+    }
 
 
 def onet_l4_indoor_fraction(
@@ -202,12 +229,15 @@ def build_isco_lvl2_template(
             f"{soc_to_isco_aggregator!r}"
         )
 
-    if indoor_context_method == "jem_location":
+    if indoor_context_method in ("jem_partial", "jem_binary"):
         if jem_path is None:
             raise ValueError(
-                "jem_path is required for indoor_context_method='jem_location'"
+                "jem_path is required for indoor_context_method="
+                f"{indoor_context_method!r}"
             )
-        l4_indoor = load_jem_l4_indoor_fraction(jem_path)
+        l4_indoor = load_jem_l4_indoor_fraction(
+            jem_path, partial=(indoor_context_method == "jem_partial")
+        )
     else:
         if onet_controlled_df is None or onet_not_controlled_df is None:
             raise ValueError(
@@ -271,6 +301,129 @@ def _select_country_ilo_year(
     return best_year
 
 
+ARMED_FORCES_ISCO_CODES = ("01", "02", "03")
+SECURITY_ISCO_CODE = "54"
+CLEANING_ISCO_CODES = ("91", "96")
+LAOS_COUNTRY = "Laos"
+US_COUNTRY = "United States"
+
+# Active-duty end strength from the DOD 2023 Demographics Profile (2024).
+# Officers (Table 2.01) map to ISCO 01. Enlisted (1,038,909) is split by pay
+# grade (Congressional Research Service IF10684, March 2024), scaled to the DOD
+# enlisted total: E-5 through E-9 → ISCO 02, E-1 through E-4 → ISCO 03.
+# Total active duty = 1,273,382.
+US_ARMED_FORCES_EMPLOYMENT = {
+    "01": 234_473,
+    "02": 519_571,
+    "03": 519_338,
+}
+
+
+def _coded_employment(emp: Dict[str, float]) -> float:
+    """Sum reported ISCO L2 employment, excluding total and NEC rows."""
+    return sum(
+        float(v)
+        for k, v in emp.items()
+        if k not in ("Tot", "Not") and pd.notna(v) and float(v) > 0
+    )
+
+
+def _isco_code_missing(emp: Dict[str, float], code: str) -> bool:
+    """True when an ISCO code is absent or has no usable employment."""
+    value = emp.get(code)
+    return value is None or not pd.notna(value) or float(value) <= 0
+
+
+def _median_isco_shares(
+    nested: Dict[str, Dict[str, float]], codes: tuple[str, ...]
+) -> Dict[str, float]:
+    """
+    Median share of coded employment for each ISCO code across reporting countries.
+
+    Arguments:
+        nested (dict): Country employment from :func:`build_employment_by_isco`.
+        codes (tuple): ISCO L2 codes to summarise.
+
+    Returns:
+        dict: Median employment share for each code.
+    """
+    shares: Dict[str, list[float]] = {code: [] for code in codes}
+    for emp in nested.values():
+        coded = _coded_employment(emp)
+        if coded <= 0:
+            continue
+        for code in codes:
+            value = emp.get(code)
+            if value is not None and pd.notna(value) and float(value) > 0:
+                shares[code].append(float(value) / coded)
+    return {
+        code: float(np.median(values)) if values else 0.0
+        for code, values in shares.items()
+    }
+
+
+def _apply_us_armed_forces_override(
+    nested: Dict[str, Dict[str, float]],
+) -> Dict[str, Dict[str, float]]:
+    """
+    Replace US armed-forces ISCO headcounts with DOD active-duty end strength.
+
+    ILO does not report ISCO 01–03 for the United States. Median-share imputation
+    understates active duty, so we use DOD demographics instead.
+
+    Arguments:
+        nested (dict): Country employment after other imputation steps.
+
+    Returns:
+        dict: The same structure with US codes 01–03 set from DoD sources.
+    """
+    emp = nested.get(US_COUNTRY)
+    if emp is None:
+        return nested
+    for code in ARMED_FORCES_ISCO_CODES:
+        emp[code] = float(US_ARMED_FORCES_EMPLOYMENT[code])
+    return nested
+
+
+def impute_missing_ilo_employment(
+    nested: Dict[str, Dict[str, float]],
+) -> Dict[str, Dict[str, float]]:
+    """
+    Fill missing ILO ISCO headcounts using global median shares of coded employment.
+
+    Armed forces (01–03) and security (54) are imputed for every country with a
+    gap except the United States, which uses DOD active-duty end strength.
+    Cleaning (91, 96) is imputed for Laos only.
+
+    Arguments:
+        nested (dict): Country employment from the ILO ISCO table.
+
+    Returns:
+        dict: The same structure with imputed codes added in place.
+    """
+    armed_shares = _median_isco_shares(nested, ARMED_FORCES_ISCO_CODES)
+    security_share = _median_isco_shares(nested, (SECURITY_ISCO_CODE,))[
+        SECURITY_ISCO_CODE
+    ]
+    cleaning_shares = _median_isco_shares(nested, CLEANING_ISCO_CODES)
+
+    for country, emp in nested.items():
+        coded = _coded_employment(emp)
+        if coded <= 0:
+            continue
+        if country != US_COUNTRY:
+            for code in ARMED_FORCES_ISCO_CODES:
+                if _isco_code_missing(emp, code) and armed_shares[code] > 0:
+                    emp[code] = coded * armed_shares[code]
+        if _isco_code_missing(emp, SECURITY_ISCO_CODE) and security_share > 0:
+            emp[SECURITY_ISCO_CODE] = coded * security_share
+        if country == LAOS_COUNTRY:
+            for code in CLEANING_ISCO_CODES:
+                if _isco_code_missing(emp, code) and cleaning_shares[code] > 0:
+                    emp[code] = coded * cleaning_shares[code]
+    return _apply_us_armed_forces_override(nested)
+
+
 def build_employment_by_isco(ilo_df: pd.DataFrame) -> Dict[str, Dict[str, float]]:
     """Reduce ILO ISCO-08 L2 employment CSV to ``{country: {code: employment}}``.
 
@@ -278,6 +431,9 @@ def build_employment_by_isco(ilo_df: pd.DataFrame) -> Dict[str, Dict[str, float]
     - Uses one survey year per country (all codes from the same year).
     - Year: latest with NEC share of total <= 10%; if none qualify, the year
       with the lowest NEC share (ties → more recent year).
+    - Missing armed forces (01–03) and security (54) are imputed from global
+      median shares of coded employment; the United States uses DOD active-duty
+      end strength for 01–03. Cleaning (91, 96) is imputed for Laos only.
     """
     df = ilo_df.copy()
     if "sex.label" in df.columns:
@@ -311,7 +467,7 @@ def build_employment_by_isco(ilo_df: pd.DataFrame) -> Dict[str, Dict[str, float]
             continue
         nested[country] = dict(years[year])
 
-    return nested
+    return impute_missing_ilo_employment(nested)
 
 
 def load_ilo_published_pct(path: Path) -> pd.DataFrame:

@@ -19,3 +19,4 @@ adjust_MVA_by_cost,0.0,flag,"If 1, divide MVA by HS 842139 export USD/kg so chea
 filters_per_cr_box,4.0,filters,Methods equation 5.,
 pc_fans_per_cr_box,6.0,fans,Methods equation 5.,
 scenario3_ramp_weeks,8.0,weeks,Methods 2.3.4.,
+IndoorContextMethod,jem_binary,,Essential-workers indoor fraction: onet_max | onet_banded | jem_partial | jem_binary.,data/essential_workers/job_exposure_matrix.xls

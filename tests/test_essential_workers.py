@@ -18,6 +18,7 @@ import pandas as pd
 import pytest
 
 import essential_workers as ew
+from preprocessing import US_ARMED_FORCES_EMPLOYMENT
 
 # ---------------------------------------------------------------------------
 # Indoor context
@@ -43,11 +44,22 @@ def test_onet_banded_thresholds():
     assert ew._pct_to_indoor_fraction(80, "onet_max") == pytest.approx(0.8)
 
 
-def test_jem_location_buckets():
+def test_jem_partial_buckets():
     assert ew._location_to_indoor_fraction(2.9) == 1.0
     assert ew._location_to_indoor_fraction(2.1) == 0.5
     assert ew._location_to_indoor_fraction(1.0) == 0.0
     assert ew._location_to_indoor_fraction(0.2) == 0.0
+
+
+def test_jem_binary_buckets():
+    assert ew._location_to_indoor_fraction(2.9, partial=False) == 1.0
+    assert ew._location_to_indoor_fraction(2.1, partial=False) == 1.0
+    assert ew._location_to_indoor_fraction(1.0, partial=False) == 0.0
+    assert ew._location_to_indoor_fraction(0.2, partial=False) == 0.0
+
+
+def test_load_indoor_context_method_reads_settings():
+    assert ew.load_indoor_context_method() == "jem_binary"
 
 
 def test_indoor_method_does_not_change_total_weights(data_dir):
@@ -72,7 +84,7 @@ def test_jem_load_produces_l2_indoors_context(data_dir):
     w = ew.build_isco_lvl2_weights(
         poll,
         cw,
-        indoor_context_method="jem_location",
+        indoor_context_method="jem_partial",
         jem_path=data_dir / "job_exposure_matrix.xls",
     )
     assert ew.INDOORS_CONTEXT_COLUMN in w.columns
@@ -80,14 +92,10 @@ def test_jem_load_produces_l2_indoors_context(data_dir):
 
 
 @pytest.mark.full_data
-def test_compare_indoor_context_methods_returns_three_rows(data_dir):
+def test_compare_indoor_context_methods_returns_all_methods(data_dir):
     out = ew.compare_indoor_context_methods(data_dir)
-    assert set(out["indoor_context_method"]) == {
-        "onet_max",
-        "onet_banded",
-        "jem_location",
-    }
-    assert len(out) == 3 * 6
+    assert set(out["indoor_context_method"]) == set(ew.INDOOR_CONTEXT_METHODS)
+    assert len(out) == len(ew.INDOOR_CONTEXT_METHODS) * 6
 
 
 # ---------------------------------------------------------------------------
@@ -316,6 +324,65 @@ def test_build_employment_year_fallback_all_high_nec():
     )
     out = ew.build_employment_by_isco(df)
     assert out["Benin"]["Not"] == 30_000.0
+
+
+def test_build_employment_imputes_missing_armed_forces_security_and_laos_cleaning():
+    """Missing AF and security are imputed globally; cleaning only for Laos."""
+    tot = "Occupation (ISCO-08), 2 digit level: Total"
+    c01 = "Occupation (ISCO-08), 2 digit level: 01 - Commissioned armed forces officers"
+    c02 = "Occupation (ISCO-08), 2 digit level: 02 - Non-commissioned armed forces officers"
+    c03 = "Occupation (ISCO-08), 2 digit level: 03 - Armed forces occupations, other ranks"
+    c54 = "Occupation (ISCO-08), 2 digit level: 54 - Protective services workers"
+    c91 = "Occupation (ISCO-08), 2 digit level: 91 - Cleaners and helpers"
+    c96 = "Occupation (ISCO-08), 2 digit level: 96 - Refuse workers and other elementary workers"
+    health = "Occupation (ISCO-08), 2 digit level: 22 - Health professionals"
+    df = pd.DataFrame(
+        [
+            _ilo_row("Argentina", tot, 1000.0, 2024),
+            _ilo_row("Argentina", c01, 10.0, 2024),
+            _ilo_row("Argentina", c02, 20.0, 2024),
+            _ilo_row("Argentina", c03, 30.0, 2024),
+            _ilo_row("Argentina", c54, 54.0, 2024),
+            _ilo_row("Argentina", c91, 91.0, 2024),
+            _ilo_row("Argentina", c96, 96.0, 2024),
+            _ilo_row("Argentina", health, 100.0, 2024),
+            _ilo_row("Belize", tot, 500.0, 2024),
+            _ilo_row("Belize", health, 50.0, 2024),
+            _ilo_row("Lao People's Democratic Republic", tot, 200.0, 2024),
+            _ilo_row("Lao People's Democratic Republic", health, 20.0, 2024),
+            _ilo_row("Benin", tot, 300.0, 2024),
+            _ilo_row("Benin", health, 30.0, 2024),
+        ]
+    )
+    out = ew.build_employment_by_isco(df)
+    belize_coded = 50_000.0
+    laos_coded = 20_000.0
+    share_91 = 91 / 401
+    share_96 = 96 / 401
+    share_01 = 10 / 401
+    share_54 = 54 / 401
+
+    assert out["Belize"]["01"] == pytest.approx(belize_coded * share_01)
+    assert out["Belize"]["54"] == pytest.approx(belize_coded * share_54)
+    assert out["Laos"]["91"] == pytest.approx(laos_coded * share_91)
+    assert out["Laos"]["96"] == pytest.approx(laos_coded * share_96)
+    assert "91" not in out["Benin"]
+    assert "96" not in out["Benin"]
+
+
+def test_build_employment_us_armed_forces_uses_dod_override():
+    """US armed forces use DOD active-duty end strength, not median imputation."""
+    tot = "Occupation (ISCO-08), 2 digit level: Total"
+    health = "Occupation (ISCO-08), 2 digit level: 22 - Health professionals"
+    df = pd.DataFrame(
+        [
+            _ilo_row("United States of America", tot, 150_000.0, 2024),
+            _ilo_row("United States of America", health, 50_000.0, 2024),
+        ]
+    )
+    out = ew.build_employment_by_isco(df)
+    for code, expected in US_ARMED_FORCES_EMPLOYMENT.items():
+        assert out["United States"][code] == expected
 
 
 def test_compute_worker_dicts_nec_imputation():

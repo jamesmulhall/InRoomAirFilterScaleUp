@@ -85,13 +85,19 @@ import numpy as np
 import pandas as pd
 from scipy import stats
 
-from paths import ESSENTIAL_WORKERS_DATA, ESSENTIAL_WORKERS_RESULTS
+from paths import ESSENTIAL_WORKERS_DATA, ESSENTIAL_WORKERS_RESULTS, SCALE_UP_SETTINGS
 
 # ---------------------------------------------------------------------------
 # Constants (domain / ISCO weights — used by preprocessing via lazy import)
 # ---------------------------------------------------------------------------
 
-IndoorContextMethod = Literal["onet_max", "onet_banded", "jem_location"]
+IndoorContextMethod = Literal["onet_max", "onet_banded", "jem_partial", "jem_binary"]
+INDOOR_CONTEXT_METHODS: tuple[IndoorContextMethod, ...] = (
+    "onet_max",
+    "onet_banded",
+    "jem_partial",
+    "jem_binary",
+)
 INDOORS_CONTEXT_COLUMN = "indoors_context"
 
 # ISCO-08 level-2 codes the ILO classes as essential (WESO 2023 Table A2).
@@ -2216,13 +2222,32 @@ class EssentialWorkerOutputs:
     overlap_calibration: OverlapCalibrationResult
 
 
+def load_indoor_context_method(
+    settings_path: Optional[Path] = None,
+) -> IndoorContextMethod:
+    """
+    Read ``IndoorContextMethod`` from ``data/scale_up/settings.csv``.
+
+    Arguments:
+        settings_path (Path, optional): Override path to the settings CSV.
+
+    Returns:
+        str: One of :data:`INDOOR_CONTEXT_METHODS`.
+    """
+    path = settings_path or SCALE_UP_SETTINGS
+    table = pd.read_csv(path).set_index("setting")["value"]
+    method = str(table["IndoorContextMethod"]).strip()
+    if method not in INDOOR_CONTEXT_METHODS:
+        raise ValueError(
+            f"IndoorContextMethod must be one of {INDOOR_CONTEXT_METHODS}, "
+            f"got {method!r} in {path}"
+        )
+    return method  # type: ignore[return-value]
+
+
 def compare_indoor_context_methods(
     data_dir: Path,
-    methods: tuple[IndoorContextMethod, ...] = (
-        "onet_max",
-        "onet_banded",
-        "jem_location",
-    ),
+    methods: tuple[IndoorContextMethod, ...] = INDOOR_CONTEXT_METHODS,
 ) -> pd.DataFrame:
     """Run the pipeline under each indoor-context rule; return global summary rows."""
     rows = []
@@ -2244,7 +2269,7 @@ def run_pipeline(
     results_dir: Optional[Path] = None,
     write: bool = False,
     soc_to_isco_aggregator: str = "mean",
-    indoor_context_method: IndoorContextMethod = "onet_banded",
+    indoor_context_method: Optional[IndoorContextMethod] = None,
     write_indoor_sensitivity: bool = False,
 ) -> EssentialWorkerOutputs:
     """Run the full essential-worker pipeline end-to-end.
@@ -2278,13 +2303,17 @@ def run_pipeline(
         ``"mean"`` (corrected behaviour). Use ``"last"`` to reproduce the
         notebook's pre-refactor outputs exactly.
     indoor_context_method:
-        ``onet_max`` (default): max of both O*NET indoor CSVs, linear %/100.
+        ``onet_max``: max of both O*NET indoor CSVs, linear %/100.
         ``onet_banded``: same source; 75–100% → 100% indoor, 50–75% → 50%, else 0.
-        ``jem_location``: ``job_exposure_matrix.xls`` Location buckets.
+        ``jem_partial``: JEM Location 0/1 → 0%, 2 → 50%, 3 → 100%.
+        ``jem_binary``: JEM Location 0/1 → 0%, 2/3 → 100%.
+        Defaults to ``IndoorContextMethod`` in ``data/scale_up/settings.csv``.
     write_indoor_sensitivity:
         If ``True`` (with ``write``), also write ``Indoor_Context_Sensitivity.csv``.
     """
     data_dir = Path(data_dir)
+    if indoor_context_method is None:
+        indoor_context_method = load_indoor_context_method()
     poll_df = pd.read_excel(
         data_dir / "ISCO-08 OpinionPollCensus.xlsx", engine="openpyxl"
     )

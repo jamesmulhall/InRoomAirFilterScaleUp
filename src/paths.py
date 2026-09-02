@@ -11,6 +11,7 @@ RESULTS_DIR = REPO_ROOT / "results"
 
 ESSENTIAL_WORKERS_DATA = DATA_DIR / "essential_workers"
 SCALE_UP_DATA = DATA_DIR / "scale_up"
+SCALE_UP_SETTINGS = SCALE_UP_DATA / "settings.csv"
 
 ESSENTIAL_WORKERS_RESULTS = RESULTS_DIR / "essential_workers"
 SCALE_UP_RESULTS = RESULTS_DIR / "scale_up"
