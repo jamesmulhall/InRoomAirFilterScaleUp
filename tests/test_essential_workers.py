@@ -1108,8 +1108,10 @@ def test_summarize_group_composition_global_and_country():
     assert food["% of Essential Workers"] == pytest.approx(0.5)
     assert food["% of Vital Workers"] == pytest.approx(0.25)
     assert global_comp["% of Essential Workers"].sum() == pytest.approx(1.0)
+    assert "Essential Workers" not in global_comp.columns
 
     country = ew.summarize_group_composition(group_df, by="Country")
+    assert "Essential Workers" in country.columns
     a_food = country.loc[
         (country["Country Code"] == "AAA") & (country["occupational_group"] == "Food")
     ].iloc[0]
@@ -1117,6 +1119,7 @@ def test_summarize_group_composition_global_and_country():
 
     region = ew.summarize_group_composition(group_df, by="Region")
     assert region["% of Essential Workers"].sum() == pytest.approx(1.0)
+    assert "Essential Workers" not in region.columns
 
 
 def test_summarize_worker_shares_vs_gdp_negative_association():

@@ -1871,45 +1871,72 @@ def _group_composition_from_counts(counts: pd.DataFrame) -> pd.DataFrame:
     return out
 
 
+def _composition_output_columns(
+    by: str | None,
+    *,
+    include_counts: bool,
+) -> list[str]:
+    """Column order for :func:`summarize_group_composition` outputs."""
+    id_cols: list[str] = []
+    if by == "Region":
+        id_cols = ["Region"]
+    elif by == "Country":
+        id_cols = ["Country Name", "Country Code", "Region"]
+    cols = ["occupational_group", *GROUP_COMPOSITION_SHARE_COLS]
+    if include_counts:
+        cols = ["occupational_group", *_GROUP_COUNT_COLS, *GROUP_COMPOSITION_SHARE_COLS]
+    return id_cols + cols
+
+
+def _finalize_composition_output(
+    df: pd.DataFrame,
+    *,
+    include_counts: bool,
+) -> pd.DataFrame:
+    """Drop worker-count columns when the scope would undercount totals."""
+    if include_counts:
+        return df
+    drop = [c for c in _GROUP_COUNT_COLS if c in df.columns]
+    return df.drop(columns=drop)
+
+
 def summarize_group_composition(
     group_df: pd.DataFrame,
     *,
     by: str | None = None,
+    include_counts: bool | None = None,
 ) -> pd.DataFrame:
     """Occupational-group breakdown of essential / vital workforces.
 
     Worker-weighted composition: each group's share is
     ``group_count / sum(groups)`` within the chosen scope.
 
-    Parameters
-    ----------
-    group_df:
-        Per-country × group counts (e.g. ``EssentialWorkersByGroup.csv``).
-    by:
-        ``None`` — one global composition (ILO-employment countries only).
-        ``"Region"`` — composition within each UN region.
-        ``"Country"`` — composition within each country (adds share columns
-        to country × group rows).
+    Arguments:
+        group_df (DataFrame): Per-country × group counts (e.g.
+            ``EssentialWorkersByGroup.csv``).
+        by (str, optional): ``None`` for global; ``"Region"`` or ``"Country"``.
+        include_counts (bool, optional): Whether to include absolute worker-count
+            columns. Defaults to ``True`` only for ``by="Country"`` (complete per
+            country). Global and regional scopes omit counts because they sum
+            only countries with ILO ISCO employment (~144), not all countries.
 
-    Returns
-    -------
-    DataFrame with count columns plus :data:`GROUP_COMPOSITION_SHARE_COLS`
-    (fractions 0–1). For ``by="Country"`` / ``"Region"``, identifier columns
-    are retained.
+    Returns:
+        DataFrame: Composition shares (fractions 0–1), and count columns when
+        ``include_counts`` is True.
     """
+    if include_counts is None:
+        include_counts = by == "Country"
+
     if group_df.empty:
-        cols = ["occupational_group", *_GROUP_COUNT_COLS, *GROUP_COMPOSITION_SHARE_COLS]
-        if by == "Region":
-            cols = ["Region", *cols]
-        elif by == "Country":
-            cols = ["Country Name", "Country Code", "Region", *cols]
-        return pd.DataFrame(columns=cols)
+        return pd.DataFrame(columns=_composition_output_columns(by, include_counts=include_counts))
 
     if by is None:
         agg = group_df.groupby("occupational_group", as_index=False)[
             list(_GROUP_COUNT_COLS)
         ].sum()
-        return _group_composition_from_counts(agg)
+        return _finalize_composition_output(
+            _group_composition_from_counts(agg), include_counts=include_counts
+        )
 
     if by == "Region":
         rows: list[pd.DataFrame] = []
@@ -1917,13 +1944,17 @@ def summarize_group_composition(
             agg = gdf.groupby("occupational_group", as_index=False)[
                 list(_GROUP_COUNT_COLS)
             ].sum()
-            part = _group_composition_from_counts(agg)
+            part = _finalize_composition_output(
+                _group_composition_from_counts(agg), include_counts=include_counts
+            )
             part.insert(0, "Region", region)
             rows.append(part)
         return (
             pd.concat(rows, ignore_index=True)
             if rows
-            else summarize_group_composition(group_df.iloc[0:0], by="Region")
+            else summarize_group_composition(
+                group_df.iloc[0:0], by="Region", include_counts=include_counts
+            )
         )
 
     if by == "Country":
@@ -1937,8 +1968,11 @@ def summarize_group_composition(
             if not isinstance(keys, tuple):
                 keys = (keys,)
             meta = dict(zip(id_cols, keys))
-            part = _group_composition_from_counts(
-                gdf[["occupational_group", *_GROUP_COUNT_COLS]].copy()
+            part = _finalize_composition_output(
+                _group_composition_from_counts(
+                    gdf[["occupational_group", *_GROUP_COUNT_COLS]].copy()
+                ),
+                include_counts=include_counts,
             )
             for col in reversed(id_cols):
                 part.insert(0, col, meta[col])

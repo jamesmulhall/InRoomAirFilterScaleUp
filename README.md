@@ -4,7 +4,7 @@ A scale up simulation of various in-room filtration systems that could protect e
 
 This repo contains two main models that may be useful for other researchers:
 
-1. src/essential_workers.py estimates essential worker counts, vital worker counts, indoor essential worker counts, and indoor vital worker counts for all 196 UN member states and 21 additional territories. It also provides a sector breakdown for many of these countries so users can see indoor essential workers (or equivalent) in the food sector, healthcare sector, energy sector, etc. This may be useful for analysis on potential PPE stockpiles or scaling up other transmission reducing interventions.
+1. src/essential_workers.py estimates essential worker counts, vital worker counts, indoor essential worker counts, and indoor vital worker counts for all 196 UN member states and 21 additional territories. It also provides a sector breakdown for many of these countries so users can see indoor essential workers (or equivalent) in the food sector, healthcare sector, manual sector, etc. This may be useful for analysis on potential PPE stockpiles or scaling up other transmission reducing interventions.
 2. src/scale_up_model.py models the scale-up of commercial portable air cleaners, DIY Corsi-Rosenthal boxes, and DIY coal baghouse filtration units during the first 6 months of a pandemic as transmissible as measles. This is provided globally and by UN region. We also provide country-level estimates, but recommend that these are not used unless the numbers are verified with national data.
 
 ---
