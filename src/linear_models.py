@@ -17,6 +17,8 @@ in data/scale_up/settings.csv, which is where the model reads them from.
 """
 
 import os
+import sys
+from pathlib import Path
 
 import numpy as np
 import pandas as pd
@@ -29,6 +31,11 @@ plt.style.use(
     "ALLFED-matplotlib-style-sheet/main/ALLFED.mplstyle"
 )
 
+_VIZ_DIR = Path(__file__).resolve().parents[1] / "scripts" / "visualization"
+if str(_VIZ_DIR) not in sys.path:
+    sys.path.insert(0, str(_VIZ_DIR))
+from viz_common import label_panel  # noqa: E402
+
 COAL_FILE = "data/scale_up/coal_plant_airflow.csv"
 ALLOCATOR_FILE = "data/scale_up/allocator_fit_data.csv"
 SETTINGS_FILE = "data/scale_up/settings.csv"
@@ -36,8 +43,8 @@ RESULTS_DIR = "results/linear_models"
 
 # Dataset labels used in the allocator input file
 DATASETS = {
-    "GrandView": "Filtration market revenue (world)",
-    "PRODCOM": "PRODCOM 28251410 (EU production)",
+    "GrandView": "Filtration market revenue",
+    "PRODCOM": "PRODCOM 28251410",
 }
 
 
@@ -103,16 +110,17 @@ def fit_allocator(path=ALLOCATOR_FILE, prodcom_only=False):
 
     The default pooled model shares one slope across both datasets and gives
     each its own intercept, so the slope is not distorted by the difference
-    in levels. If ``prodcom_only`` is True, that pooled regression is skipped
-    and the slope comes from the PRODCOM points alone.
+    in levels. If ``prodcom_only`` is True, the slope used by the model comes
+    from the PRODCOM points alone; the pooled fit is still computed for the
+    diagnostic plot.
 
     Arguments:
         path (str): CSV with columns country, dataset, value_usd, mva_usd.
         prodcom_only (bool): Fit b on PRODCOM only.
 
     Returns:
-        dict: Single-dataset fits, the input data, and either the pooled or
-            the PRODCOM model as ``chosen``.
+        dict: Single-dataset fits, the pooled fit, the input data, and either
+            the pooled or the PRODCOM model as ``chosen``.
     """
     df = pd.read_csv(path)
     df["log_y"] = np.log10(df.value_usd)
@@ -126,15 +134,6 @@ def fit_allocator(path=ALLOCATOR_FILE, prodcom_only=False):
             subset.log_y.to_numpy(), sm.add_constant(subset.log_x.to_numpy())
         ).fit()
 
-    if prodcom_only:
-        return {
-            "pooled": None,
-            "single": single,
-            "chosen": single["PRODCOM"],
-            "prodcom_only": True,
-            "data": df,
-        }
-
     pooled = sm.OLS(
         df.log_y.to_numpy(),
         sm.add_constant(np.column_stack([df.log_x, df.is_prodcom])),
@@ -142,15 +141,15 @@ def fit_allocator(path=ALLOCATOR_FILE, prodcom_only=False):
     return {
         "pooled": pooled,
         "single": single,
-        "chosen": pooled,
-        "prodcom_only": False,
+        "chosen": single["PRODCOM"] if prodcom_only else pooled,
+        "prodcom_only": prodcom_only,
         "data": df,
     }
 
 
 def plot_allocator(fit, path):
     """
-    Plot the fit that supplies b, with the two single-dataset fits beside it.
+    Plot the PRODCOM fit, with market-revenue and pooled fits beside it.
 
     Arguments:
         fit (dict): Output of fit_allocator.
@@ -160,77 +159,90 @@ def plot_allocator(fit, path):
     fig = plt.figure(figsize=(12.5, 5.5))
     grid = fig.add_gridspec(2, 2, width_ratios=[1.9, 1], hspace=0.6, wspace=0.25)
     main = fig.add_subplot(grid[:, 0])
-    panels = [fig.add_subplot(grid[0, 1]), fig.add_subplot(grid[1, 1])]
+    market_ax = fig.add_subplot(grid[0, 1])
+    pooled_ax = fig.add_subplot(grid[1, 1])
 
-    x = np.linspace(df.log_x.min() - 0.12, df.log_x.max() + 0.12, 50)
-    chosen = fit["chosen"]
-    if fit["prodcom_only"]:
-        subset = df[df.dataset == "PRODCOM"]
-        intercept, slope = np.asarray(chosen.params)
-        main.scatter(subset.log_x, subset.log_y, label=DATASETS["PRODCOM"], zorder=3)
-        main.plot(x, intercept + slope * x, zorder=2)
-        main.annotate(
-            f"log$_{{10}}$y = {intercept:.2f} + {slope:.3f}·log$_{{10}}$MVA\n"
-            f"b = {slope:.3f} ± {np.asarray(chosen.bse)[1]:.3f}\n"
-            f"R² = {chosen.rsquared:.3f}",
-            xy=(0.97, 0.04),
-            xycoords="axes fraction",
-            va="bottom",
-            ha="right",
-        )
-        main.set_title(
-            f"PRODCOM-only fit (n = {int(chosen.nobs)})",
-            loc="left",
-        )
-    else:
-        intercept, slope, shift = np.asarray(chosen.params)
-        for name, label in DATASETS.items():
-            subset = df[df.dataset == name]
-            main.scatter(subset.log_x, subset.log_y, label=label, zorder=3)
-            main.plot(x, intercept + shift * (name == "PRODCOM") + slope * x, zorder=2)
-        sign = "+" if shift >= 0 else "-"
-        main.annotate(
-            f"log$_{{10}}$y = {intercept:.2f} {sign} {abs(shift):.2f}·PRODCOM "
-            f"+ {slope:.3f}·log$_{{10}}$MVA\n"
-            f"b = {slope:.3f} ± {np.asarray(chosen.bse)[1]:.3f}\n"
-            f"R² = {chosen.rsquared:.3f}",
-            xy=(0.97, 0.04),
-            xycoords="axes fraction",
-            va="bottom",
-            ha="right",
-        )
-        main.set_title(
-            "Pooled fit — shared slope, dataset-specific intercept "
-            f"(n = {int(chosen.nobs)})",
-            loc="left",
-        )
-
+    # Main panel: PRODCOM only
+    prodcom = df[df.dataset == "PRODCOM"]
+    model = fit["single"]["PRODCOM"]
+    intercept, slope = np.asarray(model.params)
+    x = np.linspace(prodcom.log_x.min() - 0.12, prodcom.log_x.max() + 0.12, 50)
+    main.scatter(prodcom.log_x, prodcom.log_y, zorder=3)
+    main.plot(x, intercept + slope * x, zorder=2)
+    main.annotate(
+        f"b = {slope:.3f} ± {np.asarray(model.bse)[1]:.3f}\n"
+        f"R² = {model.rsquared:.3f}",
+        xy=(0.97, 0.04),
+        xycoords="axes fraction",
+        va="bottom",
+        ha="right",
+    )
+    main.set_title(f"PRODCOM fit (n = {int(model.nobs)})", loc="left")
     main.set_xlabel("log$_{10}$ manufacturing value added (USD)")
     main.set_ylabel("log$_{10}$ annual value (USD)")
-    main.legend(loc="upper left")
+    label_panel(main, "a", x=-0.1, y=1.054)
 
-    for axis, (name, label) in zip(panels, DATASETS.items()):
+    # Top side: filtration market revenue alone
+    market = df[df.dataset == "GrandView"]
+    model = fit["single"]["GrandView"]
+    coeffs = np.asarray(model.params)
+    xi = np.linspace(market.log_x.min() - 0.1, market.log_x.max() + 0.1, 50)
+    market_ax.scatter(market.log_x, market.log_y, zorder=3)
+    market_ax.plot(xi, coeffs[0] + coeffs[1] * xi, zorder=2)
+    market_ax.annotate(
+        f"b = {coeffs[1]:.3f} ± {np.asarray(model.bse)[1]:.3f}\n"
+        f"R² = {model.rsquared:.3f}",
+        xy=(0.96, 0.05),
+        xycoords="axes fraction",
+        va="bottom",
+        ha="right",
+        fontsize=8,
+    )
+    market_ax.set_title(
+        f"Filtration market revenue fit (n = {int(model.nobs)})",
+        loc="left",
+        fontsize=9,
+    )
+    market_ax.set_ylabel("log$_{10}$ value", fontsize=9)
+    label_panel(market_ax, "b", x=-0.27, y=1.14)
+
+    # Bottom side: pooled fit across both datasets
+    pooled = fit["pooled"]
+    intercept, slope, shift = np.asarray(pooled.params)
+    xi = np.linspace(df.log_x.min() - 0.1, df.log_x.max() + 0.1, 50)
+    for name, label in DATASETS.items():
         subset = df[df.dataset == name]
-        model = fit["single"][name]
-        coeffs = np.asarray(model.params)
-        xi = np.linspace(subset.log_x.min() - 0.1, subset.log_x.max() + 0.1, 50)
-        axis.scatter(subset.log_x, subset.log_y, zorder=3)
-        axis.plot(xi, coeffs[0] + coeffs[1] * xi, zorder=2)
-        axis.annotate(
-            f"log$_{{10}}$y = {coeffs[0]:.2f} + {coeffs[1]:.3f}·log$_{{10}}$MVA\n"
-            f"b = {coeffs[1]:.3f} ± {np.asarray(model.bse)[1]:.3f}\n"
-            f"R² = {model.rsquared:.3f}",
-            xy=(0.96, 0.05),
-            xycoords="axes fraction",
-            va="bottom",
-            ha="right",
-            fontsize=8,
+        pooled_ax.scatter(subset.log_x, subset.log_y, label=label, zorder=3)
+        kwargs = {"zorder": 2}
+        if name == "PRODCOM":
+            kwargs["color"] = "#3D87CB"
+        pooled_ax.plot(
+            xi,
+            intercept + shift * (name == "PRODCOM") + slope * xi,
+            **kwargs,
         )
-        axis.set_title(f"{label} (n = {int(model.nobs)})", loc="left", fontsize=9)
-        axis.set_ylabel("log$_{10}$ value", fontsize=9)
-    panels[1].set_xlabel("log$_{10}$ manufacturing value added (USD)", fontsize=9)
+    pooled_ax.annotate(
+        f"b = {slope:.3f} ± {np.asarray(pooled.bse)[1]:.3f}\n"
+        f"R² = {pooled.rsquared:.3f}",
+        xy=(0.96, 0.05),
+        xycoords="axes fraction",
+        va="bottom",
+        ha="right",
+        fontsize=8,
+    )
+    n_prodcom = int((df.dataset == "PRODCOM").sum())
+    n_market = int((df.dataset == "GrandView").sum())
+    pooled_ax.set_title(
+        f"Pooled fit (n = {n_prodcom} + {n_market})",
+        loc="left",
+        fontsize=9,
+    )
+    pooled_ax.set_xlabel("log$_{10}$ manufacturing value added (USD)", fontsize=9)
+    pooled_ax.set_ylabel("log$_{10}$ value", fontsize=9)
+    pooled_ax.legend(loc="upper left", fontsize=7)
+    label_panel(pooled_ax, "c", x=-0.27, y=1.14)
 
-    fig.savefig(path, dpi=200, bbox_inches="tight")
+    fig.savefig(path, dpi=300, bbox_inches="tight")
     plt.close(fig)
 
 

@@ -286,6 +286,7 @@ def load_country_data(adjust_mva_by_cost=False):
             "Country Name",
             "region",
             "%Essential Workers",
+            "%Vital Workers",
             "Indoor Essential CADR Requirement (L/s)",
             "Indoor Vital CADR Requirement (L/s)",
         ]
@@ -461,22 +462,6 @@ def filter_production(samples, market_revenue, bands=MERV13_BANDS):
     return filters
 
 
-def industrial_revenue_total(samples):
-    """
-    Total industrial air filter market revenue, summed across MERV bands.
-
-    Used for methods equation 10, where repurposing draws only on filters in
-    industrial settings because residential panel filters are left in place.
-
-    Arguments:
-        samples (dict): Output of sample_all.
-
-    Returns:
-        numpy.ndarray: Revenue in USD per year, shape (n,).
-    """
-    return sum(samples[f"industrial_revenue_{b}_usd"] for b in MERV_BANDS)
-
-
 def fan_production(samples, settings):
     """
     Global annual fan production, expressed as the CR boxes it could equip.
@@ -561,7 +546,7 @@ def repurposed_ecadr(annual_ecadr, lifespan, essential_share, recovered):
     Arguments:
         annual_ecadr (numpy.ndarray): Annual production eCADR, shape (n, n_countries).
         lifespan (numpy.ndarray): Unit lifespan in years, shape (n,).
-        essential_share (numpy.ndarray): Essential fraction, shape (n_countries,).
+        essential_share (numpy.ndarray): Essential fraction, shape (n, n_countries).
         recovered (numpy.ndarray): Fraction of units recovered, shape (n,).
 
     Returns:
@@ -570,7 +555,7 @@ def repurposed_ecadr(annual_ecadr, lifespan, essential_share, recovered):
     return (
         annual_ecadr
         * lifespan[:, None]
-        * (1 - essential_share)[None, :]
+        * (1 - essential_share)
         * recovered[:, None]
     )
 
@@ -754,7 +739,15 @@ def build_streams(
         dict: Channel name to cumulative eCADR, shape (weeks, n, n_countries).
     """
     delay = settings["start_delay_weeks"]
-    essential = df["%Essential Workers"].to_numpy(float)
+    essential_hi = df["%Essential Workers"].to_numpy(float)
+    vital = df["%Vital Workers"].to_numpy(float)
+    essential = np.clip(
+        np.column_stack(
+            [sample_normal(lo, hi, n) for lo, hi in zip(vital, essential_hi)]
+        ),
+        vital,
+        essential_hi,
+    )
 
     total_revenue = samples["total_air_filter_revenue_usd"]
     panel_pac_deduction = (
@@ -769,11 +762,11 @@ def build_streams(
     pac_country = pac_global[:, None] * shares[None, :]
     cr_country = cr_global[:, None] * shares[None, :]
 
-    # Equation 10 repurposes only filters in industrial settings
-    industrial_ecadr, _, _ = cr_box_ecadr_global(
-        samples, settings, industrial_revenue_total(samples)
+    # Equation 10 repurposes only non-residential panel filters
+    non_residential_ecadr, _, _ = cr_box_ecadr_global(
+        samples, settings, total_revenue * samples["fraction_non_residential"]
     )
-    industrial_country = industrial_ecadr[:, None] * shares[None, :]
+    non_residential_country = non_residential_ecadr[:, None] * shares[None, :]
 
     multiplier = scenario_multiplier(samples, settings, n, baseline_filters, scenario)
 
@@ -793,7 +786,7 @@ def build_streams(
         ),
         "repurposed_cr_box": one_off_timeline(
             repurposed_ecadr(
-                industrial_country,
+                non_residential_country,
                 samples["panel_filter_lifespan_years"],
                 essential,
                 samples["fraction_recovered"],

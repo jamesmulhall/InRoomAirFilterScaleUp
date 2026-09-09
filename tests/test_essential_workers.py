@@ -18,6 +18,7 @@ import pandas as pd
 import pytest
 
 import essential_workers as ew
+from paths import SCALE_UP_SETTINGS
 from preprocessing import US_ARMED_FORCES_EMPLOYMENT
 
 # ---------------------------------------------------------------------------
@@ -993,8 +994,11 @@ def test_group_and_country_cadr_requirements(data_dir):
     assert retail["Indoor Essential Workers"] == pytest.approx(400_000)
     assert retail["Indoor Vital Workers"] == pytest.approx(200_000)
 
-    scaled_health = 35 * ew.ASHRAE_SCALE_FACTOR
-    scaled_retail = 20 * ew.ASHRAE_SCALE_FACTOR
+    scale_factor = float(
+        pd.read_csv(SCALE_UP_SETTINGS).set_index("setting").at["ashrae_scale_factor", "value"]
+    )
+    scaled_health = 35 * scale_factor
+    scaled_retail = 20 * scale_factor
     assert health[ew.SCALED_ECA_COL] == pytest.approx(scaled_health)
     assert health[ew.INDOOR_ESSENTIAL_CADR_COL] == pytest.approx(
         600_000 * scaled_health

@@ -59,6 +59,18 @@ CHANNEL_LABELS = {
     "repurposed_baghouse": "Coal baghouse bags, repurposed",
 }
 
+# ALLFED style-sheet colours, reordered for colourblind-safer stacking.
+# Same technology = dark/light pair; technologies use blue / yellow / grey
+# instead of the default cycle's adjacent greens.
+STACK_CHANNEL_COLORS = {
+    "cr_box": "#3D87CB",
+    "repurposed_cr_box": "#85abda",
+    "pac": "#F0B323",
+    "repurposed_pac": "#f6cd85",
+    "baghouse": "#6c7075",
+    "repurposed_baghouse": "#d8d8d9",
+}
+
 SCENARIO_LABELS = {
     3: "Scenario 1: growth based on N95s during COVID-19",
     2: "Scenario 2: growth capped by meltblown supply",
@@ -170,10 +182,15 @@ def _draw_scenario_coverage_ax(
         show_legend (bool): Whether to draw the legend.
         show_xlabel (bool): Whether to draw the x-axis label.
     """
+    SCENARIO_COLORS = {
+    3: "#3A913F",
+    2: "#3D87CB",
+    1: "#F0B323",
+    }
     for (scenario, label), style in zip(SCENARIO_LABELS.items(), ["-", "-", "-"]):
         df = by_scenario[scenario]
         (line,) = ax.plot(
-            df.week, df.coverage_median, linewidth=2, linestyle=style, label=label
+            df.week, df.coverage_median, linewidth=2, linestyle=style, color=SCENARIO_COLORS[scenario], label=label
         )
         ax.fill_between(
             df.week,
@@ -246,7 +263,7 @@ def plot_scenario_coverage(output_path: Path) -> None:
         f"medians with {interval:.0f}% uncertainty intervals"
     )
     _draw_scenario_coverage_ax(
-        ax, by_scenario, essential_level, last_week, title=title, ylim=(0, 30)
+        ax, by_scenario, essential_level, last_week, title=title, ylim=(0, 40)
     )
     fig.tight_layout()
     _save_figure(fig, output_path)
@@ -254,7 +271,7 @@ def plot_scenario_coverage(output_path: Path) -> None:
 
 def plot_scenario_coverage_two_panel(output_path: Path) -> None:
     """
-    Global coverage over time: full y-range above, 0–30% zoom below.
+    Global coverage over time: full y-range above, 0–50% zoom below.
 
     Arguments:
         output_path (Path): PNG to write.
@@ -267,7 +284,7 @@ def plot_scenario_coverage_two_panel(output_path: Path) -> None:
         by_scenario[scenario] = df[df.region == "Global"]
     interval = by_scenario[1].interval_percent.iloc[0]
     last_week = by_scenario[1].week.max()
-    zoom_ylim = (0, 30)
+    zoom_ylim = (0, 60)
 
     fig, (ax_top, ax_bottom) = plt.subplots(2, 1, figsize=(10, 10), sharex=True)
     title_line = f"Medians ± {interval:.0f}% uncertainty intervals"
@@ -301,7 +318,7 @@ def plot_scenario_coverage_two_panel(output_path: Path) -> None:
         essential_level,
         last_week,
         title=(
-            "Global filtration supply against workforce requirements (0–30%)\n"
+            "Global filtration supply against workforce requirements (0–60% scale)\n"
             f"{title_line}"
         ),
         show_legend=False,
@@ -323,30 +340,11 @@ def plot_scenario_coverage_two_panel(output_path: Path) -> None:
     _save_figure(fig, output_path)
 
 
-def _stackplot_channel_colors(swap_repurposed_cr_baghouse=False):
-    """
-    Default stackplot colours for the supply channels.
-
-    Arguments:
-        swap_repurposed_cr_baghouse (bool): If True, swap repurposed CR box and
-            repurposed baghouse colours so CR box channels are both green.
-
-    Returns:
-        list: One colour per channel in CHANNEL_LABELS order.
-    """
-    colors = list(plt.rcParams["axes.prop_cycle"].by_key()["color"])
-    channel_colors = colors[: len(CHANNEL_LABELS)]
-    if swap_repurposed_cr_baghouse:
-        channel_colors[1], channel_colors[5] = channel_colors[5], channel_colors[1]
-    return channel_colors
-
-
 def plot_stacked_channels(
     output_path: Path,
     scenario: int,
     results_dir: Path = PACS_PRIORITIZED_RESULTS,
     title_suffix: str = "",
-    swap_repurposed_cr_baghouse_colors: bool = False,
 ) -> None:
     """
     Global coverage over time, broken down by supply channel.
@@ -356,8 +354,6 @@ def plot_stacked_channels(
         scenario (int): 1, 2 or 3.
         results_dir (Path): Directory with ``ecadr_by_channel`` CSVs.
         title_suffix (str): Extra line for the figure title.
-        swap_repurposed_cr_baghouse_colors (bool): Swap repurposed CR box and
-            repurposed baghouse colours.
     """
     channels = pd.read_csv(
         results_dir / f"ecadr_by_channel_scenario{scenario}.csv", index_col="week"
@@ -372,7 +368,7 @@ def plot_stacked_channels(
         shares.index,
         *[shares[name] for name in CHANNEL_LABELS],
         labels=list(CHANNEL_LABELS.values()),
-        colors=_stackplot_channel_colors(swap_repurposed_cr_baghouse_colors),
+        colors=[STACK_CHANNEL_COLORS[name] for name in CHANNEL_LABELS],
         alpha=0.75,
     )
     ax.set_xlim(shares.index.min(), shares.index.max())
@@ -570,9 +566,7 @@ def main(output_dir: Path, scenario: int, week: int) -> None:
     print(f"Wrote {scenario_two_panel_path}")
 
     stacked_path = output_dir / "Global_stacked_cadr.png"
-    plot_stacked_channels(
-        stacked_path, scenario, swap_repurposed_cr_baghouse_colors=True
-    )
+    plot_stacked_channels(stacked_path, scenario)
     print(f"Wrote {stacked_path}")
 
     cr_path = output_dir / "Global_stacked_cadr_CR_boxes_prioritized.png"

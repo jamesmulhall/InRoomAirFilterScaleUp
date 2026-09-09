@@ -2,7 +2,7 @@ setting,value,units,note,source
 n_draws,1000.0,count,Monte Carlo sample size.,
 weeks,26.0,weeks,Simulation horizon.,
 random_seed,32649.0,,Set for reproducibility.,
-uncertainty_interval,50.0,percent,Width of the uncertainty interval reported on coverage and drawn on the figures.,
+uncertainty_interval,70.0,percent,Width of the uncertainty interval reported on coverage and drawn on the figures.,
 start_delay_weeks,2.0,weeks,Uniform production start delay applied to all countries.,
 utilisation_baseline,0.75,fraction,"Methods 2.3.4, factories run at 75 percent and rise to 100 percent.",https://www.federalreserve.gov/releases/g17/current/default.htm
 utilisation_ramp_weeks,13.0,weeks,"Methods 2.3.4, three months.",
@@ -20,3 +20,4 @@ filters_per_cr_box,4.0,filters,Methods equation 5.,
 pc_fans_per_cr_box,6.0,fans,Methods equation 5.,
 scenario3_ramp_weeks,8.0,weeks,Methods 2.3.4.,
 IndoorContextMethod,jem_binary,,Essential-workers indoor fraction: onet_max | onet_banded | jem_partial | jem_binary.,data/essential_workers/job_exposure_matrix.xls
+ashrae_scale_factor,5.7,multiple,Scales ASHRAE 241 ECA (L/s/person) to the target pathogen. Default 5.7 is measles (Jones et al. 2025); change for other diseases.,https://doi.org/10.1111/ina.70036

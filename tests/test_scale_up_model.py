@@ -220,6 +220,8 @@ def test_real_settings_cover_everything_the_model_reads():
         "scenario3_ramp_weeks",
         "uncertainty_interval",
         "adjust_MVA_by_cost",
+        "IndoorContextMethod",
+        "ashrae_scale_factor",
     ]
     missing = [name for name in required if name not in settings]
     assert not missing, f"settings.csv is missing: {missing}"
@@ -534,11 +536,6 @@ def test_filter_production_over_all_bands_is_the_total():
     np.testing.assert_allclose(merv13 / total, [0.4])
 
 
-def test_industrial_revenue_total_sums_the_bands():
-    total = sm.industrial_revenue_total(_band_samples())
-    np.testing.assert_allclose(total, [500.0])
-
-
 def test_every_merv_band_has_a_price_in_the_parameter_table():
     """Total production needs a price for all five bands, not just MERV 13+."""
     parameters = pd.read_csv(REAL_PARAMETERS).parameter.tolist()
@@ -820,10 +817,10 @@ def test_fit_allocator_reproduces_the_mva_exponent():
     assert abs(slope - 1) < 2 * np.asarray(pooled.bse)[1]
 
 
-def test_fit_allocator_prodcom_only_skips_the_pooled_regression():
+def test_fit_allocator_prodcom_only_uses_prodcom_as_chosen():
     """With the flag on, b comes from the PRODCOM points alone."""
     fit = lm.fit_allocator(str(REAL_ALLOCATOR), prodcom_only=True)
-    assert fit["pooled"] is None
+    assert fit["pooled"] is not None
     assert fit["prodcom_only"] is True
     assert fit["chosen"] is fit["single"]["PRODCOM"]
     slope = np.asarray(fit["chosen"].params)[1]

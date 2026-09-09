@@ -23,8 +23,8 @@ from viz_common import (
 )
 
 VMIN = 0.0
-VMAX = 75.0
-CMAP = "lilac"
+VMAX = 87.0
+CMAP = "viridis"
 LEGEND_LABEL = "% of labour force"
 
 # Manuscript panels: (panel label, column, title)
@@ -92,7 +92,7 @@ def plot_2x2_grid(
     """Four-panel map with one shared colorbar (option 2)."""
     fig, axes = plt.subplots(2, 2, figsize=(13.0, 6.9))
     fig.subplots_adjust(
-        left=0.01, right=0.99, top=0.93, bottom=0.09, hspace=0.14, wspace=0.03
+        left=0.01, right=0.99, top=0.93, bottom=0.09, hspace=0.14, wspace=-0.05
     )
     flat_axes = axes.ravel()
 

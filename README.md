@@ -102,7 +102,7 @@ uv export --format requirements-txt --no-hashes --no-emit-project -o requirement
 
 ## Results
 
-- `results/essential_workers/` — per-country/regional worker counts, per-group worker counts and ASHRAE-241 CADR requirements (ECA × 5.7), validation, overlap calibration, on-site housing requirements
+- `results/essential_workers/` — per-country/regional worker counts, per-group worker counts and ASHRAE-241 CADR requirements (ECA × `ashrae_scale_factor` in `data/scale_up/settings.csv`; default 5.7 for measles), validation, overlap calibration, on-site housing requirements
 - `results/scale_up/PACs_prioritized/` — for each scenario: `weekly_ecadr_by_country_*`, `ecadr_by_channel_*` (weekly, global) and `coverage_{vital,essential}_*` (median and uncertainty interval by region and week), plus `requirements_by_region.csv`, the eCADR each region is measured against. This is the default run (panel filters stay with PACs). `results/scale_up/CR_boxes_prioritized/` holds the same outputs when panel filters are diverted to CR boxes
 - `results/linear_models/` — plots of the two fitted regressions
 - `results/visualizations/` — ALLFED-styled manuscript figures

@@ -9,7 +9,7 @@ pac_market_revenue_usd,11037333333,16556000000,normal,USD/year,Average of three 
 https://www.mordorintelligence.com/industry-reports/portable-air-purifier-market
 https://www.expertmarketresearch.com/reports/portable-air-purifier-market"
 fraction_room,0.5,0.68,normal,fraction,Median 0.59 per methods; 90 percent UI generated around this,https://www.mordorintelligence.com/industry-reports/portable-air-purifier-market
-fraction_merv13_plus,0.4,0.6,lognormal,fraction,Methods 2.3.1.,https://www.mordorintelligence.com/industry-reports/portable-air-purifier-market
+fraction_merv13_plus,0.4,0.7,lognormal,fraction,Methods 2.3.1.,https://www.mordorintelligence.com/industry-reports/portable-air-purifier-market
 fraction_non_panel,0.6,0.7,normal,fraction,Panel filter market (~7 B) is approx. 35% of global market (~20 B),"https://www.researchandmarkets.com/report/global-panel-filters-market
 https://www.marketsandmarkets.com/Market-Reports/panel-filters-market-118890404.html"
 pac_price_usd,117,439,lognormal,USD/unit,"""An initial cost-survey of commercially available Energy Star rated in-room filters (U.S.EPA 2021a) designed for the residential market found costs ranging from $0.71 to $2.66 per CADR in units of ft3 min?1"". 0.71 to 2.66 * the median CADR below of 165 CFM (=78 L/s) = $117-439",https://www.medrxiv.org/content/10.1101/2022.01.09.22268972v1.full
@@ -39,6 +39,9 @@ https://www.raptorsupplies.com.au/pd/field-controls/tplus-h13
 https://protecta.com.au/hepa-filter-has500-hf.html"
 fraction_panel,0.3,0.4,normal,fraction,Panel filter market (~7 B) is approx. 35% of global market (~20 B),"https://www.researchandmarkets.com/report/global-panel-filters-market
 https://www.marketsandmarkets.com/Market-Reports/panel-filters-market-118890404.html"
+fraction_non_residential,0.45,0.7,lognormal,fraction,"Share of the air filter market that is not residential. Grand View Research HVAC filters: residential 52.5% in 2025, so non-residential 47.5%. Other market reports suggest higher numbers. Global Growth Insights has residential at 28%, implying 72% non-residential. However, it also seems to suggest HEPA (and maybe other high MERV) filters are concentrated in healthcare, pharma, etc. so 72% may be overweighting availability for repurposing. Coherent research has non-residential at ~59%","https://www.grandviewresearch.com/industry-analysis/hvac-filters-market-report
+https://www.coherentmarketinsights.com/industry-reports/air-filtration-market
+https://www.globalgrowthinsights.com/market-reports/air-filters-market-112598"
 filter_volume_m3,0.006555,0.006555,uniform,m3/filter,Volume of a 20x20x1 filter (0.508 x 0.508 x 0.0254 m). Equation 4 divides revenue by price per m3 of media times this volume.,
 pac_panel_filter_volume_m3,0.001638,0.003203,uniform,m3/filter,Volume of a typical panel-format PAC filter (10x10x1 to 14x14x1 in). Used to convert panel PAC units to 20x20x1 filter counts when subtracting from the CR box filter pool.,
 filter_media_area_m2,0.47,0.47,uniform,m2/filter,"Media area per pleated filter, used only for the meltblown mass cap. Manufacturer datasheets cluster at 0.51 m2 (5.5 sq ft).",https://www.purolatorairfilters.com/pdfs/PuroGreen-13.pdf

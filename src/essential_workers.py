@@ -1280,7 +1280,6 @@ def compute_absolute_counts(
     return df
 
 
-ASHRAE_SCALE_FACTOR = 5.7
 SCALED_ECA_COL = "Scaled ECA (L/s/person)"
 INDOOR_ESSENTIAL_CADR_COL = "Indoor Essential CADR Requirement (L/s)"
 INDOOR_VITAL_CADR_COL = "Indoor Vital CADR Requirement (L/s)"
@@ -1301,10 +1300,19 @@ def compute_group_workers_and_cadr(
     weights_template: pd.DataFrame,
     overlaps_by_country: Dict[str, Dict[str, float]],
     *,
-    scale_factor: float = ASHRAE_SCALE_FACTOR,
+    scale_factor: Optional[float] = None,
     lf_col: str = "Labour Force (2024)",
 ) -> pd.DataFrame:
-    """Per-country occupational-group worker counts and ASHRAE-241 CADR demand."""
+    """Per-country occupational-group worker counts and ASHRAE-241 CADR demand.
+
+    ``scale_factor`` defaults to ``ashrae_scale_factor`` in settings.csv.
+    """
+    if scale_factor is None:
+        scale_factor = float(
+            pd.read_csv(SCALE_UP_SETTINGS)
+            .set_index("setting")
+            .at["ashrae_scale_factor", "value"]
+        )
     data_dir = Path(data_dir)
     ashrae = pd.read_csv(data_dir / "ASHRAE241_ECA_by_occupancy.csv")
     mapping = pd.read_csv(data_dir / "ASHRAE241_group_mapping.csv")
@@ -1646,6 +1654,23 @@ def rank_countries_by_worker_pct(
     return rankings
 
 
+def benjamini_hochberg_correct(p_values: pd.Series | np.ndarray) -> pd.Series:
+    """
+    Adjust p-values with the Benjamini–Hochberg FDR procedure.
+
+    Arguments:
+        p_values (pd.Series | np.ndarray): raw p-values in one test family
+
+    Returns:
+        pd.Series: BH-adjusted p-values (index preserved when input is a Series)
+    """
+    series = pd.Series(p_values, dtype=float)
+    if series.empty:
+        return series
+    adjusted = stats.false_discovery_control(series.to_numpy(), method="bh")
+    return pd.Series(adjusted, index=series.index, dtype=float)
+
+
 def pitman_morgan_variance_test(
     x: np.ndarray | pd.Series,
     y: np.ndarray | pd.Series,
@@ -1760,6 +1785,10 @@ def summarize_indoor_range_compression(
     Relative spread: coefficients of variation (SD/mean) and Pitman–Morgan
     on log shares (``p (indoor log-SD < total)``), which asks whether
     multiplicative dispersion shrinks after means fall.
+
+    All reported p-values are Benjamini–Hochberg FDR-adjusted: the four
+    one-sided indoor-vs-total tests together, and the two two-sided tests
+    together.
     """
     pairs = (
         (
@@ -1809,7 +1838,15 @@ def summarize_indoor_range_compression(
                 "p (indoor log-SD < total)": rel_spread["p_log_y_smaller"],
             }
         )
-    return pd.DataFrame(rows).set_index("Transition")
+    out = pd.DataFrame(rows).set_index("Transition")
+    one_sided = out[["p (indoor SD < total)", "p (indoor log-SD < total)"]].stack()
+    out[["p (indoor SD < total)", "p (indoor log-SD < total)"]] = (
+        benjamini_hochberg_correct(one_sided).unstack()
+    )
+    out["Pitman–Morgan p (two-sided)"] = benjamini_hochberg_correct(
+        out["Pitman–Morgan p (two-sided)"]
+    )
+    return out
 
 
 # ---------------------------------------------------------------------------
@@ -2069,7 +2106,8 @@ def summarize_worker_shares_vs_gdp(
 
     Primary association is Spearman (rank) vs GDP; Pearson on ``log(GDP)``
     is also reported. Negative rho supports larger shares in lower-income
-    countries.
+    countries. P-values are Benjamini–Hochberg FDR-adjusted across all
+    shares in the summary table (Spearman and Pearson separately).
     """
     gdp = load_gdp_per_capita() if gdp_df is None else gdp_df.copy()
     keep = ["Country Code", gdp_col]
@@ -2114,6 +2152,11 @@ def summarize_worker_shares_vs_gdp(
             }
         )
     summary = pd.DataFrame(rows)
+    if not summary.empty:
+        summary["Spearman p"] = benjamini_hochberg_correct(summary["Spearman p"])
+        summary["Pearson p (log GDP)"] = benjamini_hochberg_correct(
+            summary["Pearson p (log GDP)"]
+        )
     return merged, summary
 
 
