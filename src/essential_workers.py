@@ -1292,6 +1292,80 @@ _CADR_BACKFILL_COLUMNS = (
     INDOOR_VITAL_CADR_COL,
 )
 
+# Surface deposition γ ~ U(0.42, 0.61) h⁻¹; biological decay λ ~ lognormal
+# (geometric mean 0.52 h⁻¹, geometric SD 1.9). Medians from those distributions.
+_GAMMA_DIST = stats.uniform(loc=0.42, scale=0.61 - 0.42)
+_LAMBDA_DIST = stats.lognorm(s=np.log(1.9), scale=0.52)
+_MEDIAN_GAMMA = float(_GAMMA_DIST.median())
+_MEDIAN_LAMBDA = float(_LAMBDA_DIST.median())
+_GAMMA_PLUS_LAMBDA = _MEDIAN_GAMMA + _MEDIAN_LAMBDA
+
+
+def _pathogen_scaled_ecadr(ecadr, space_vol, max_occupants, qer_ratio):
+    """Return eACH, k, scaled eCADR, volume/person (methods §2.2)."""
+    eACH = float(ecadr) * float(max_occupants) * 3.6 / float(space_vol)
+    k = qer_ratio + (qer_ratio - 1.0) * _GAMMA_PLUS_LAMBDA / eACH
+    vol = float(space_vol) / float(max_occupants)
+    return eACH, k, float(ecadr) * k, vol
+
+
+def _ashrae_mapped_groups(data_dir: Path) -> pd.DataFrame:
+    """Occupational groups joined to ASHRAE occupancy rows."""
+    mapped = pd.read_csv(Path(data_dir) / "ASHRAE241_group_mapping.csv").merge(
+        pd.read_csv(Path(data_dir) / "ASHRAE241_ECA_by_occupancy.csv"),
+        on=["occupancy_group", "occupancy_category"],
+        how="left",
+    )
+    missing = set(GROUP_OVERLAP) - set(mapped["occupational_group"])
+    if missing:
+        raise ValueError(f"Missing ASHRAE mapping for groups: {sorted(missing)}")
+    needed = [
+        "eca_ls_per_person",
+        "space_vol",
+        "max_occupants",
+        "baseline_outdoor_airflow_ls_per_person",
+    ]
+    if mapped[needed].isna().any().any():
+        raise ValueError("Group mapping references incomplete ASHRAE occupancy rows")
+    return mapped
+
+
+def build_ashrae_scaleup_table(
+    data_dir: Path,
+    qer_ratio: Optional[float] = None,
+) -> pd.DataFrame:
+    """Methods Table 1: pathogen-scaled eCADR by occupational group (no outdoor credit)."""
+    if qer_ratio is None:
+        qer_ratio = float(
+            pd.read_csv(SCALE_UP_SETTINGS)
+            .set_index("setting")
+            .at["ashrae_scale_factor", "value"]
+        )
+    order = {g: i for i, g in enumerate(GROUP_OVERLAP)}
+    rows = []
+    for _, row in _ashrae_mapped_groups(data_dir).iterrows():
+        eACH, k, scaled, vol = _pathogen_scaled_ecadr(
+            row["eca_ls_per_person"],
+            row["space_vol"],
+            row["max_occupants"],
+            qer_ratio,
+        )
+        rows.append(
+            {
+                "Occupational group": row["occupational_group"],
+                "ASHRAE-241 room type": row["occupancy_category"],
+                "eCADR (L/s/p)": float(row["eca_ls_per_person"]),
+                "eACH (/h)": round(eACH, 1),
+                "Volume per occupant (m3)": round(vol),
+                "k": round(k, 1),
+                "Scaled eCADR (L/s/p)": round(scaled),
+                "Scaled eACH (/h)": round(eACH * k, 1),
+            }
+        )
+    out = pd.DataFrame(rows)
+    out["_ord"] = out["Occupational group"].map(order)
+    return out.sort_values("_ord").drop(columns="_ord").reset_index(drop=True)
+
 
 def compute_group_workers_and_cadr(
     data_dir: Path,
@@ -1300,32 +1374,37 @@ def compute_group_workers_and_cadr(
     weights_template: pd.DataFrame,
     overlaps_by_country: Dict[str, Dict[str, float]],
     *,
-    scale_factor: Optional[float] = None,
+    qer_ratio: Optional[float] = None,
+    existing_airflow_weight: float = 0.5,
     lf_col: str = "Labour Force (2024)",
 ) -> pd.DataFrame:
     """Per-country occupational-group worker counts and ASHRAE-241 CADR demand.
 
-    ``scale_factor`` defaults to ``ashrae_scale_factor`` in settings.csv.
+    Per-person eCADR is pathogen-scaled (§2.2) then reduced by
+    ``existing_airflow_weight`` × baseline outdoor airflow. ``qer_ratio``
+    defaults to ``ashrae_scale_factor`` in settings.csv.
     """
-    if scale_factor is None:
-        scale_factor = float(
+    if qer_ratio is None:
+        qer_ratio = float(
             pd.read_csv(SCALE_UP_SETTINGS)
             .set_index("setting")
             .at["ashrae_scale_factor", "value"]
         )
-    data_dir = Path(data_dir)
-    ashrae = pd.read_csv(data_dir / "ASHRAE241_ECA_by_occupancy.csv")
-    mapping = pd.read_csv(data_dir / "ASHRAE241_group_mapping.csv")
-    mapped = mapping.merge(
-        ashrae,
-        on=["occupancy_group", "occupancy_category"],
-        how="left",
-    )
-    missing_groups = set(GROUP_OVERLAP) - set(mapped["occupational_group"])
-    if missing_groups:
-        raise ValueError(f"Missing ASHRAE mapping for groups: {sorted(missing_groups)}")
-    if mapped["eca_ls_per_person"].isna().any():
-        raise ValueError("Group mapping references unknown ASHRAE occupancy categories")
+    mapped = _ashrae_mapped_groups(data_dir)
+    net_by_group = {}
+    for _, row in mapped.iterrows():
+        _, _, scaled, _ = _pathogen_scaled_ecadr(
+            row["eca_ls_per_person"],
+            row["space_vol"],
+            row["max_occupants"],
+            qer_ratio,
+        )
+        net_by_group[row["occupational_group"]] = max(
+            0.0,
+            scaled
+            - existing_airflow_weight
+            * float(row["baseline_outdoor_airflow_ls_per_person"]),
+        )
 
     group_meta = mapped.set_index("occupational_group")
     rows: list[dict[str, Any]] = []
@@ -1413,7 +1492,7 @@ def compute_group_workers_and_cadr(
 
         for group in GROUP_OVERLAP:
             meta = group_meta.loc[group]
-            scaled_eca = float(meta["eca_ls_per_person"]) * scale_factor
+            scaled_eca = net_by_group[group]
             scale = float(lf) / tot
             indoor_essential = group_iew[group] * scale
             indoor_vital = group_ivw[group] * scale
@@ -2348,6 +2427,7 @@ def run_pipeline(
     soc_to_isco_aggregator: str = "mean",
     indoor_context_method: Optional[IndoorContextMethod] = None,
     write_indoor_sensitivity: bool = False,
+    existing_airflow_weight: float = 0.5,
 ) -> EssentialWorkerOutputs:
     """Run the full essential-worker pipeline end-to-end.
 
@@ -2369,7 +2449,8 @@ def run_pipeline(
         region / country), ``EssentialWorkersByRegion.csv``,
         ``Essential_Workers_Validation.csv``,
         ``Group_Overlap_Calibration.csv``, and
-        ``Onsite_Housing_Worker_Requirements.csv`` to ``results_dir``.
+        ``Onsite_Housing_Worker_Requirements.csv``, and
+        ``ASHRAE241_scaled_table1.csv`` to ``results_dir``.
 
     Per-country group overlaps are calibrated to ILO published %essential
     (scalar ``x`` on global Figure A1 priors); vital workers use the same
@@ -2387,6 +2468,9 @@ def run_pipeline(
         Defaults to ``IndoorContextMethod`` in ``data/scale_up/settings.csv``.
     write_indoor_sensitivity:
         If ``True`` (with ``write``), also write ``Indoor_Context_Sensitivity.csv``.
+    existing_airflow_weight:
+        Fraction of ASHRAE baseline outdoor airflow credited against the
+        pathogen-scaled per-person eCADR (0 = none, 1 = full). Default 0.5.
     """
     data_dir = Path(data_dir)
     if indoor_context_method is None:
@@ -2462,7 +2546,9 @@ def run_pipeline(
         employment_by_iso,
         weights_template,
         overlap_cal.overlaps_by_country,
+        existing_airflow_weight=existing_airflow_weight,
     )
+    ashrae_scaleup_table = build_ashrae_scaleup_table(data_dir)
     lf_df = attach_country_cadr_from_groups(lf_df, group_df)
     lf_df = backfill_neighbours(lf_df, cols=_CADR_BACKFILL_COLUMNS)
 
@@ -2491,6 +2577,9 @@ def run_pipeline(
         results_dir.mkdir(parents=True, exist_ok=True)
         lf_df.to_csv(results_dir / "EssentialWorkersByCountry.csv", index=False)
         group_df.to_csv(results_dir / "EssentialWorkersByGroup.csv", index=False)
+        ashrae_scaleup_table.to_csv(
+            results_dir / "ASHRAE241_scaled_table1.csv", index=False
+        )
         summarize_group_composition(group_df).to_csv(
             results_dir / "EssentialWorkersByGroupComposition_Global.csv", index=False
         )

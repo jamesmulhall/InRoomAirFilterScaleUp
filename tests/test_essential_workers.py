@@ -979,12 +979,14 @@ def test_group_and_country_cadr_requirements(data_dir):
         ]
     )
 
+    weight = 0.5
     group_df = ew.compute_group_workers_and_cadr(
         data_dir,
         lf_df,
         employment,
         template,
         {"Testland": flat_overlap},
+        existing_airflow_weight=weight,
     )
     health = group_df.loc[group_df["occupational_group"] == "Health"].iloc[0]
     retail = group_df.loc[group_df["occupational_group"] == "Retail"].iloc[0]
@@ -994,11 +996,26 @@ def test_group_and_country_cadr_requirements(data_dir):
     assert retail["Indoor Essential Workers"] == pytest.approx(400_000)
     assert retail["Indoor Vital Workers"] == pytest.approx(200_000)
 
-    scale_factor = float(
+    qer = float(
         pd.read_csv(SCALE_UP_SETTINGS).set_index("setting").at["ashrae_scale_factor", "value"]
     )
-    scaled_health = 35 * scale_factor
-    scaled_retail = 20 * scale_factor
+    mapped = ew._ashrae_mapped_groups(data_dir)
+
+    def expected_net(group_name):
+        row = mapped.loc[mapped["occupational_group"] == group_name].iloc[0]
+        _, _, scaled, _ = ew._pathogen_scaled_ecadr(
+            row["eca_ls_per_person"],
+            row["space_vol"],
+            row["max_occupants"],
+            qer,
+        )
+        return max(
+            0.0,
+            scaled - weight * float(row["baseline_outdoor_airflow_ls_per_person"]),
+        )
+
+    scaled_health = expected_net("Health")
+    scaled_retail = expected_net("Retail")
     assert health[ew.SCALED_ECA_COL] == pytest.approx(scaled_health)
     assert health[ew.INDOOR_ESSENTIAL_CADR_COL] == pytest.approx(
         600_000 * scaled_health
@@ -1012,6 +1029,41 @@ def test_group_and_country_cadr_requirements(data_dir):
     total_essential = 1_000_000.0
     expected_eca = (600_000 * scaled_health + 400_000 * scaled_retail) / total_essential
     assert country[ew.SCALED_ECA_ESSENTIAL_COL].iloc[0] == pytest.approx(expected_eca)
+
+
+def test_ashrae_scaleup_table_matches_reference():
+    """Generated Table 1 matches the temporary Sheet1 reference."""
+    from paths import ESSENTIAL_WORKERS_DATA
+
+    got = ew.build_ashrae_scaleup_table(ESSENTIAL_WORKERS_DATA)
+    ref = pd.read_csv(ESSENTIAL_WORKERS_DATA / "ASHRAE Scaled Table 1 - Sheet1.csv")
+    merged = got.merge(ref, on="Occupational group", suffixes=("_got", "_ref"))
+    assert len(merged) == len(ref)
+    for col in [
+        "eCADR (L/s/p)",
+        "eACH (/h)",
+        "Volume per occupant (m3)",
+        "k",
+        "Scaled eCADR (L/s/p)",
+        "Scaled eACH (/h)",
+    ]:
+        assert merged[f"{col}_got"].to_numpy() == pytest.approx(
+            merged[f"{col}_ref"].to_numpy(), abs=0.05
+        )
+
+
+def test_pathogen_scale_and_outdoor_credit():
+    """Distribution medians and pathogen scale-up match methods Table 1."""
+    assert ew._MEDIAN_GAMMA == pytest.approx(ew._GAMMA_DIST.median())
+    assert ew._MEDIAN_LAMBDA == pytest.approx(ew._LAMBDA_DIST.median())
+    assert ew._GAMMA_PLUS_LAMBDA == pytest.approx(1.035)
+    eACH, k, scaled, vol = ew._pathogen_scaled_ecadr(25, 12000, 70, 5.7)
+    assert eACH == pytest.approx(25 * 70 * 3.6 / 12000)
+    assert vol == pytest.approx(12000 / 70)
+    assert round(eACH, 1) == 0.5
+    assert round(k, 1) == 15.0
+    assert round(scaled) == 374
+    assert max(0.0, scaled - 0.5 * 9.3) == pytest.approx(scaled - 4.65)
 
 
 def test_pipeline_includes_group_and_cadr_outputs(ew_outputs):

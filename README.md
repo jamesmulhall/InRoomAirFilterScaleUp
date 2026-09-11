@@ -81,7 +81,7 @@ uv export --format requirements-txt --no-hashes --no-emit-project -o requirement
 - `ISCO-08 OpinionPollCensus.xlsx`
 - `LFData_WB_plus.xlsx`
 - `ILO_country_essential_workers_pct.xlsx`
-- `ASHRAE241_ECA_by_occupancy.csv` — ASHRAE 241 Table 5-1 ECA rates (from Jones et al. 2025 Table 4)
+- `ASHRAE241_ECA_by_occupancy.csv` — ASHRAE 241 Table 5-1 ECA rates plus representative `space_vol` and `max_occupants` (from Jones et al. 2025 Table 4)
 - `ASHRAE241_group_mapping.csv` — maps occupational groups to ASHRAE occupancy categories
 
 
@@ -102,7 +102,7 @@ uv export --format requirements-txt --no-hashes --no-emit-project -o requirement
 
 ## Results
 
-- `results/essential_workers/` — per-country/regional worker counts, per-group worker counts and ASHRAE-241 CADR requirements (ECA × `ashrae_scale_factor` in `data/scale_up/settings.csv`; default 5.7 for measles), validation, overlap calibration, on-site housing requirements
+- `results/essential_workers/` — per-country/regional worker counts, per-group worker counts and ASHRAE-241 CADR requirements (room-type Wells–Riley scale-up using `ashrae_scale_factor` as the QER ratio \(x\), default 5.7 for measles, then outdoor-airflow credit), `ASHRAE241_scaled_table1.csv`, validation, overlap calibration, on-site housing requirements
 - `results/scale_up/PACs_prioritized/` — for each scenario: `weekly_ecadr_by_country_*`, `ecadr_by_channel_*` (weekly, global) and `coverage_{vital,essential}_*` (median and uncertainty interval by region and week), plus `requirements_by_region.csv`, the eCADR each region is measured against. This is the default run (panel filters stay with PACs). `results/scale_up/CR_boxes_prioritized/` holds the same outputs when panel filters are diverted to CR boxes
 - `results/linear_models/` — plots of the two fitted regressions
 - `results/visualizations/` — ALLFED-styled manuscript figures
