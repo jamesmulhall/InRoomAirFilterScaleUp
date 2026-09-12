@@ -222,6 +222,7 @@ def test_real_settings_cover_everything_the_model_reads():
         "adjust_MVA_by_cost",
         "IndoorContextMethod",
         "ashrae_scale_factor",
+        "u_new",
     ]
     missing = [name for name in required if name not in settings]
     assert not missing, f"settings.csv is missing: {missing}"

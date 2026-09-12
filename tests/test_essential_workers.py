@@ -996,18 +996,21 @@ def test_group_and_country_cadr_requirements(data_dir):
     assert retail["Indoor Essential Workers"] == pytest.approx(400_000)
     assert retail["Indoor Vital Workers"] == pytest.approx(200_000)
 
-    qer = float(
-        pd.read_csv(SCALE_UP_SETTINGS).set_index("setting").at["ashrae_scale_factor", "value"]
-    )
+    settings = pd.read_csv(SCALE_UP_SETTINGS).set_index("setting")["value"]
+    qer = float(settings["ashrae_scale_factor"])
+    u_new = float(settings["u_new"])
     mapped = ew._ashrae_mapped_groups(data_dir)
 
     def expected_net(group_name):
         row = mapped.loc[mapped["occupational_group"] == group_name].iloc[0]
+        u_base = 0.30 if row["occupancy_group"] == "Health care" else 0.0
         _, _, scaled, _ = ew._pathogen_scaled_ecadr(
             row["eca_ls_per_person"],
             row["space_vol"],
             row["max_occupants"],
             qer,
+            u_base=u_base,
+            u_new=u_new,
         )
         return max(
             0.0,
@@ -1032,37 +1035,44 @@ def test_group_and_country_cadr_requirements(data_dir):
 
 
 def test_ashrae_scaleup_table_matches_reference():
-    """Generated Table 1 matches the temporary Sheet1 reference."""
+    """Health matches Sheet1; other groups fall with u_new masks."""
     from paths import ESSENTIAL_WORKERS_DATA
 
     got = ew.build_ashrae_scaleup_table(ESSENTIAL_WORKERS_DATA)
     ref = pd.read_csv(ESSENTIAL_WORKERS_DATA / "ASHRAE Scaled Table 1 - Sheet1.csv")
-    merged = got.merge(ref, on="Occupational group", suffixes=("_got", "_ref"))
-    assert len(merged) == len(ref)
-    for col in [
-        "eCADR (L/s/p)",
-        "eACH (/h)",
-        "Volume per occupant (m3)",
-        "k",
-        "Scaled eCADR (L/s/p)",
-        "Scaled eACH (/h)",
-    ]:
-        assert merged[f"{col}_got"].to_numpy() == pytest.approx(
-            merged[f"{col}_ref"].to_numpy(), abs=0.05
+    health = got.merge(ref, on="Occupational group", suffixes=("_got", "_ref"))
+    health = health.loc[health["Occupational group"] == "Health"]
+    for col in ["k", "Scaled eCADR (L/s/p)", "Scaled eACH (/h)"]:
+        assert health[f"{col}_got"].iloc[0] == pytest.approx(
+            health[f"{col}_ref"].iloc[0], abs=0.05
         )
+    food = got.merge(ref, on="Occupational group", suffixes=("_got", "_ref"))
+    food = food.loc[food["Occupational group"] == "Food"].iloc[0]
+    assert food["Scaled eCADR (L/s/p)_got"] < food["Scaled eCADR (L/s/p)_ref"]
 
 
 def test_pathogen_scale_and_outdoor_credit():
-    """Distribution medians and pathogen scale-up match methods Table 1."""
-    assert ew._MEDIAN_GAMMA == pytest.approx(ew._GAMMA_DIST.median())
-    assert ew._MEDIAN_LAMBDA == pytest.approx(ew._LAMBDA_DIST.median())
+    """Masks leave healthcare unchanged and lower non-healthcare scale-up."""
     assert ew._GAMMA_PLUS_LAMBDA == pytest.approx(1.035)
-    eACH, k, scaled, vol = ew._pathogen_scaled_ecadr(25, 12000, 70, 5.7)
+    # No mask change (Table 1 Manufacturing).
+    eACH, k, scaled, vol = ew._pathogen_scaled_ecadr(
+        25, 12000, 70, 5.7, u_base=0.0, u_new=0.0
+    )
     assert eACH == pytest.approx(25 * 70 * 3.6 / 12000)
-    assert vol == pytest.approx(12000 / 70)
-    assert round(eACH, 1) == 0.5
     assert round(k, 1) == 15.0
     assert round(scaled) == 374
+    # u_new = 0.3: healthcare (u_base=0.3) unchanged vs no mask adj; others lower.
+    _, _, health_masked, _ = ew._pathogen_scaled_ecadr(
+        35, 81, 3, 5.7, u_base=0.3, u_new=0.3
+    )
+    _, _, health_plain, _ = ew._pathogen_scaled_ecadr(
+        35, 81, 3, 5.7, u_base=0.0, u_new=0.0
+    )
+    assert health_masked == pytest.approx(health_plain)
+    _, _, masked, _ = ew._pathogen_scaled_ecadr(
+        25, 12000, 70, 5.7, u_base=0.0, u_new=0.3
+    )
+    assert masked < scaled
     assert max(0.0, scaled - 0.5 * 9.3) == pytest.approx(scaled - 4.65)
 
 

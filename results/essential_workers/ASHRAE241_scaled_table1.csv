@@ -1,10 +1,10 @@
 Occupational group,ASHRAE-241 room type,eCADR (L/s/p),eACH (/h),Volume per occupant (m3),k,Scaled eCADR (L/s/p),Scaled eACH (/h)
-Food,Manufacturing,25.0,0.5,171,15.0,374,7.9
+Food,Manufacturing,25.0,0.5,171,6.3,158,3.3
 Health,Patient room,35.0,4.7,27,6.7,236,31.5
-Retail,Retail,20.0,1.8,40,8.4,168,15.1
-Security,Office,15.0,1.0,54,10.6,158,10.6
-Transport,Transportation waiting,30.0,1.1,100,10.2,306,11.0
-Manual,Manufacturing,25.0,0.5,171,15.0,374,7.9
-Cleaning,Office,15.0,1.0,54,10.6,158,10.6
-Tech,Office,15.0,1.0,54,10.6,158,10.6
-ArmedForces,Dayroom,20.0,3.6,20,7.1,141,25.4
+Retail,Retail,20.0,1.8,40,3.8,76,6.9
+Security,Office,15.0,1.0,54,4.6,70,4.6
+Transport,Transportation waiting,30.0,1.1,100,4.5,135,4.9
+Manual,Manufacturing,25.0,0.5,171,6.3,158,3.3
+Cleaning,Office,15.0,1.0,54,4.6,70,4.6
+Tech,Office,15.0,1.0,54,4.6,70,4.6
+ArmedForces,Dayroom,20.0,3.6,20,3.3,66,11.9

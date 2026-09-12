@@ -1301,10 +1301,13 @@ _MEDIAN_LAMBDA = float(_LAMBDA_DIST.median())
 _GAMMA_PLUS_LAMBDA = _MEDIAN_GAMMA + _MEDIAN_LAMBDA
 
 
-def _pathogen_scaled_ecadr(ecadr, space_vol, max_occupants, qer_ratio):
-    """Return eACH, k, scaled eCADR, volume/person (methods §2.2)."""
+def _pathogen_scaled_ecadr(
+    ecadr, space_vol, max_occupants, qer_ratio, u_base=0.0, u_new=0.0
+):
+    """Return eACH, k, scaled eCADR, volume/person (methods §2.2 + mask adjustment)."""
+    qer = qer_ratio * (1.0 - u_new) ** 2 / (1.0 - u_base) ** 2
     eACH = float(ecadr) * float(max_occupants) * 3.6 / float(space_vol)
-    k = qer_ratio + (qer_ratio - 1.0) * _GAMMA_PLUS_LAMBDA / eACH
+    k = qer + (qer - 1.0) * _GAMMA_PLUS_LAMBDA / eACH
     vol = float(space_vol) / float(max_occupants)
     return eACH, k, float(ecadr) * k, vol
 
@@ -1333,22 +1336,25 @@ def _ashrae_mapped_groups(data_dir: Path) -> pd.DataFrame:
 def build_ashrae_scaleup_table(
     data_dir: Path,
     qer_ratio: Optional[float] = None,
+    u_new: Optional[float] = None,
 ) -> pd.DataFrame:
-    """Methods Table 1: pathogen-scaled eCADR by occupational group (no outdoor credit)."""
+    """Pathogen-scaled eCADR by occupational group (no outdoor credit)."""
+    settings = pd.read_csv(SCALE_UP_SETTINGS).set_index("setting")["value"]
     if qer_ratio is None:
-        qer_ratio = float(
-            pd.read_csv(SCALE_UP_SETTINGS)
-            .set_index("setting")
-            .at["ashrae_scale_factor", "value"]
-        )
+        qer_ratio = float(settings["ashrae_scale_factor"])
+    if u_new is None:
+        u_new = float(settings["u_new"])
     order = {g: i for i, g in enumerate(GROUP_OVERLAP)}
     rows = []
     for _, row in _ashrae_mapped_groups(data_dir).iterrows():
+        u_base = 0.30 if row["occupancy_group"] == "Health care" else 0.0
         eACH, k, scaled, vol = _pathogen_scaled_ecadr(
             row["eca_ls_per_person"],
             row["space_vol"],
             row["max_occupants"],
             qer_ratio,
+            u_base=u_base,
+            u_new=u_new,
         )
         rows.append(
             {
@@ -1375,29 +1381,32 @@ def compute_group_workers_and_cadr(
     overlaps_by_country: Dict[str, Dict[str, float]],
     *,
     qer_ratio: Optional[float] = None,
+    u_new: Optional[float] = None,
     existing_airflow_weight: float = 0.5,
     lf_col: str = "Labour Force (2024)",
 ) -> pd.DataFrame:
     """Per-country occupational-group worker counts and ASHRAE-241 CADR demand.
 
-    Per-person eCADR is pathogen-scaled (§2.2) then reduced by
-    ``existing_airflow_weight`` × baseline outdoor airflow. ``qer_ratio``
-    defaults to ``ashrae_scale_factor`` in settings.csv.
+    Per-person eCADR is pathogen-scaled (§2.2, with mask adjustment) then
+    reduced by ``existing_airflow_weight`` × baseline outdoor airflow.
+    ``qer_ratio`` / ``u_new`` default from settings.csv.
     """
+    settings = pd.read_csv(SCALE_UP_SETTINGS).set_index("setting")["value"]
     if qer_ratio is None:
-        qer_ratio = float(
-            pd.read_csv(SCALE_UP_SETTINGS)
-            .set_index("setting")
-            .at["ashrae_scale_factor", "value"]
-        )
+        qer_ratio = float(settings["ashrae_scale_factor"])
+    if u_new is None:
+        u_new = float(settings["u_new"])
     mapped = _ashrae_mapped_groups(data_dir)
     net_by_group = {}
     for _, row in mapped.iterrows():
+        u_base = 0.30 if row["occupancy_group"] == "Health care" else 0.0
         _, _, scaled, _ = _pathogen_scaled_ecadr(
             row["eca_ls_per_person"],
             row["space_vol"],
             row["max_occupants"],
             qer_ratio,
+            u_base=u_base,
+            u_new=u_new,
         )
         net_by_group[row["occupational_group"]] = max(
             0.0,
